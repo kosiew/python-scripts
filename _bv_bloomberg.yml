@@ -1,0 +1,13 @@
+
+version: 1
+
+limits:
+    Generic 1st 'CO' Future:
+        high: 60
+        low: 45
+    USDMYR Spot Exchange Rate:
+        high: 4.5
+        low: 4.2
+    XAUUSD Spot Exchange Rate:
+        high: 1400
+        low: 1200
