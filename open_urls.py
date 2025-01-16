@@ -98,6 +98,12 @@ PRICE_CHECK_TEMPLATE = """
 PRODUCT_NAME = "product_name"
 PRICE_FILE = cf.get(SECTION_FILES, ITEM_PRICE_FILE)
 
+# a function that always gives +1 whenever called
+def get_keyprefix():
+    get_keyprefix.counter += 1
+    return get_keyprefix.counter
+get_keyprefix.counter = 0
+
 
 def get_soup(url):
     """ """
@@ -176,7 +182,6 @@ def get_thesun_url():
     result = template.format(day_string=day_string, date_string=date_string)
     return result
 
-
 def _get_urls(section, item, return_eval=True):
     global cf
 
@@ -185,12 +190,18 @@ def _get_urls(section, item, return_eval=True):
             result = cf.get(section, item, return_eval=return_eval)
         except Exception:
             return {}
+        # if result is a dictionary, prefix the keys with keyprefix
+        if isinstance(result, dict):
+            keyprefix = get_keyprefix()
+            keyprefix = str(keyprefix).zfill(4)
+            result = {f"{keyprefix} {k}": v for k, v in result.items()}
+            
         return result
     return {}
 
 
 def update_with_items_urls(urls, items):
-    for _item in items:
+    for  _item in items:
         _urls = get_urls(_item)
         urls.update(_urls)
     return urls
