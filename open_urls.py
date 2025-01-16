@@ -98,7 +98,7 @@ PRICE_CHECK_TEMPLATE = """
 PRODUCT_NAME = "product_name"
 PRICE_FILE = cf.get(SECTION_FILES, ITEM_PRICE_FILE)
 
-# a function that always gives +1 whenever called
+# a function that always increments whenever called
 def get_keyprefix():
     get_keyprefix.counter += 1
     return get_keyprefix.counter
