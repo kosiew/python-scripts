@@ -30,11 +30,15 @@ import bv_speak
 import bv_time
 import u
 import zd
+import os
 
 PAUSE_INTERVAL = 100
 PAUSE_SECONDS = 10
 
-INI_FILE = "_open_urls.ini"
+
+# Get the directory containing the script
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+INI_FILE = os.path.join(SCRIPT_DIR, "_open_urls.ini")
 cf = bv_config.Config(INI_FILE)
 
 SECTION_URLS = "urls"
