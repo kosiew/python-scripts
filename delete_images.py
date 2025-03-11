@@ -20,7 +20,7 @@ def get_image_files(folder_path: Path) -> list[Path]:
     """
     Get a list of all image files in the specified folder (non-recursive)
     """
-    image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.ico')
+    image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.ico', '.heic')
     image_files = []
     
     # Check if folder exists
