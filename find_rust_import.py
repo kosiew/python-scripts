@@ -1,6 +1,8 @@
 import os
 import re
 import sys
+import json
+import subprocess
 from pathlib import Path
 
 def find_workspace_root(start_dir):
@@ -157,28 +159,6 @@ def find_correct_import(root_dir, struct_name, workspace_root=None, current_crat
         if current_crate:
             external_deps = get_crate_dependencies(os.path.dirname(current_dir))
             
-            # Check common external dependencies
-            common_external_types = {
-                'DataType': 'arrow::datatypes::DataType',
-                'Field': 'arrow::datatypes::Field',
-                'Schema': 'arrow::datatypes::Schema',
-                'Array': 'arrow::array::Array',
-                'ArrayRef': 'arrow::array::ArrayRef',
-                'Error': 'std::error::Error',
-                'Result': 'std::result::Result',
-                # Add more common types as needed
-            }
-            
-            if struct_name in common_external_types:
-                import_path = common_external_types[struct_name]
-                parts = import_path.split('::')
-                crate_name = parts[0]
-                
-                # Only suggest if the crate is in dependencies
-                if crate_name in external_deps or crate_name == 'std':
-                    print(f"ℹ️ `{struct_name}` might be from external crate '{crate_name}'")
-                    return [(f"use {import_path};", "external dependency")]
-            
             print(f"❌ Struct `{struct_name}` not found in {root_dir}")
             # Suggest common imports that might match
             suggestions = []
@@ -262,6 +242,115 @@ def find_correct_import(root_dir, struct_name, workspace_root=None, current_crat
 
     return use_statements
 
+def check_rust_analyzer_installed():
+    """Check if rust-analyzer is installed and available"""
+    try:
+        subprocess.run(["rust-analyzer", "--version"], capture_output=True, check=False)
+        return True
+    except FileNotFoundError:
+        return False
+
+def query_rust_analyzer(workspace_root, struct_name):
+    """
+    Use rust-analyzer to find the definition of a struct
+    Returns a tuple (source_file, crate_name, module_path)
+    """
+    try:
+        # Create a temporary Rust file with the struct name
+        temp_dir = os.path.join(workspace_root, "target", "temp_ra")
+        os.makedirs(temp_dir, exist_ok=True)
+        temp_file = os.path.join(temp_dir, "temp.rs")
+        
+        # Write a sample usage of the struct to the temp file
+        with open(temp_file, "w") as f:
+            f.write(f"fn main() {{ let _x: {struct_name}; }}")
+        
+        # Run rust-analyzer to find the definition
+        cmd = [
+            "rust-analyzer", "analysis-stats", 
+            "--wait-for-input", "--json",
+            f"--goto-def={temp_file}:1:21"
+        ]
+        
+        result = subprocess.run(cmd, cwd=workspace_root, 
+                              capture_output=True, text=True, check=False)
+        
+        if result.returncode != 0:
+            print(f"⚠️ rust-analyzer error: {result.stderr}")
+            return None, None, None
+            
+        data = json.loads(result.stdout)
+        
+        if "result" not in data or not data["result"]:
+            return None, None, None
+            
+        target = data["result"]["target"]
+        file_path = target["file_path"]
+        
+        # Extract crate and module path
+        crate_name = target.get("crate_name")
+        module_path = target.get("module_path", "")
+        
+        return file_path, crate_name, module_path
+        
+    except Exception as e:
+        print(f"⚠️ Error querying rust-analyzer: {e}")
+        return None, None, None
+
+def find_correct_import_with_ra(workspace_root, struct_name, current_crate=None):
+    """Find the correct import using rust-analyzer"""
+    file_path, crate_name, module_path = query_rust_analyzer(workspace_root, struct_name)
+    
+    if not file_path:
+        print(f"❌ rust-analyzer couldn't find `{struct_name}`")
+        # Fall back to the original method
+        return find_correct_import(workspace_root, struct_name, workspace_root, current_crate)
+    
+    print(f"✅ Found `{struct_name}` with rust-analyzer:")
+    display_path = os.path.relpath(file_path, workspace_root) if workspace_root else file_path
+    print(f"   - {display_path}")
+    
+    use_statements = []
+    
+    # Normalize crate name
+    if crate_name:
+        normalized_crate = normalize_crate_name(crate_name)
+        
+        # Generate import statement
+        if current_crate and normalized_crate == normalize_crate_name(current_crate):
+            # Same crate
+            if module_path:
+                module_parts = module_path.split("::")
+                module_parts = [p for p in module_parts if p and p != "crate"]
+                if module_parts:
+                    import_path = f"use crate::{'/'.join(module_parts)}::{struct_name};"
+                else:
+                    import_path = f"use crate::{struct_name};"
+            else:
+                import_path = f"use crate::{struct_name};"
+                
+            use_statements.append((import_path, "from rust-analyzer (same crate)"))
+        else:
+            # Different crate
+            if module_path:
+                # Remove the crate prefix if present in the module path
+                if module_path.startswith(f"{normalized_crate}::"):
+                    module_path = module_path[len(f"{normalized_crate}::"):]
+                    
+                module_parts = module_path.split("::")
+                module_parts = [p for p in module_parts if p and p != "crate"]
+                
+                if module_parts:
+                    import_path = f"use {normalized_crate}::{'/'.join(module_parts)}::{struct_name};"
+                else:
+                    import_path = f"use {normalized_crate}::{struct_name};"
+            else:
+                import_path = f"use {normalized_crate}::{struct_name};"
+                
+            use_statements.append((import_path, "from rust-analyzer (external crate)"))
+    
+    return use_statements
+
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         print("Usage: python find_rust_import.py <StructName>")
@@ -284,10 +373,18 @@ if __name__ == "__main__":
     else:
         print("❌ Could not find the containing crate for the current directory")
 
+    # Check if rust-analyzer is available
+    use_rust_analyzer = check_rust_analyzer_installed()
+    
     print(f"📦 Workspace root: {workspace_root}")
     print(f"🔍 Searching for `{struct_name}`...\n")
-
-    use_statements = find_correct_import(str(workspace_root), struct_name, workspace_root, crate_name)
+    
+    if use_rust_analyzer:
+        print("🔧 Using rust-analyzer for accurate results")
+        use_statements = find_correct_import_with_ra(str(workspace_root), struct_name, crate_name)
+    else:
+        print("⚠️ rust-analyzer not found. Using fallback method.")
+        use_statements = find_correct_import(str(workspace_root), struct_name, workspace_root, crate_name)
 
     if use_statements:
         print("\n🎯 Suggested `use` statements:")
