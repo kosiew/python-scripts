@@ -114,9 +114,87 @@ def get_module_path(filepath, root_dir):
 
     return "::".join(parts)
 
-def find_correct_import(root_dir, struct_name, workspace_root=None):
+def normalize_crate_name(name):
+    """Convert crate name to the format used in imports (replacing hyphens with underscores)"""
+    return name.replace("-", "_")
+
+def get_crate_dependencies(directory):
+    """Extract dependencies from Cargo.toml"""
+    cargo_path = os.path.join(directory, "Cargo.toml")
+    if not os.path.exists(cargo_path):
+        return []
+        
+    dependencies = []
+    try:
+        with open(cargo_path, "r", encoding="utf-8") as f:
+            content = f.read()
+            # Extract dependencies section
+            dep_section = re.search(r'\[dependencies\](.*?)(\[|\Z)', content, re.DOTALL)
+            if dep_section:
+                deps_text = dep_section.group(1)
+                # Extract dependency names
+                for line in deps_text.split('\n'):
+                    # Simple case: dependency = "version"
+                    simple_match = re.match(r'^\s*([a-zA-Z0-9_-]+)\s*=', line)
+                    if simple_match:
+                        dependencies.append(simple_match.group(1))
+                    # Table format: [dependencies.name]
+                    table_match = re.match(r'^\s*\[dependencies\.([a-zA-Z0-9_-]+)\]', line)
+                    if table_match:
+                        dependencies.append(table_match.group(1))
+    except Exception as e:
+        print(f"⚠️ Error reading dependencies from Cargo.toml: {e}")
+    
+    return dependencies
+
+def find_correct_import(root_dir, struct_name, workspace_root=None, current_crate=None):
     struct_files = find_rust_struct(root_dir, struct_name)
     re_exports = find_re_exports(root_dir, struct_name)
+
+    # If the struct isn't found in the workspace, check if it might be from an external dependency
+    if not struct_files:
+        # Get dependencies from the current Cargo.toml
+        if current_crate:
+            external_deps = get_crate_dependencies(os.path.dirname(current_dir))
+            
+            # Check common external dependencies
+            common_external_types = {
+                'DataType': 'arrow::datatypes::DataType',
+                'Field': 'arrow::datatypes::Field',
+                'Schema': 'arrow::datatypes::Schema',
+                'Array': 'arrow::array::Array',
+                'ArrayRef': 'arrow::array::ArrayRef',
+                'Error': 'std::error::Error',
+                'Result': 'std::result::Result',
+                # Add more common types as needed
+            }
+            
+            if struct_name in common_external_types:
+                import_path = common_external_types[struct_name]
+                parts = import_path.split('::')
+                crate_name = parts[0]
+                
+                # Only suggest if the crate is in dependencies
+                if crate_name in external_deps or crate_name == 'std':
+                    print(f"ℹ️ `{struct_name}` might be from external crate '{crate_name}'")
+                    return [(f"use {import_path};", "external dependency")]
+            
+            print(f"❌ Struct `{struct_name}` not found in {root_dir}")
+            # Suggest common imports that might match
+            suggestions = []
+            for dep in external_deps:
+                normalized_dep = normalize_crate_name(dep)
+                suggestions.append(f"use {normalized_dep}::{struct_name};")
+            
+            if suggestions:
+                print("\nPossible imports to try:")
+                for suggestion in suggestions[:3]:  # Limit to 3 suggestions
+                    print(f"  {suggestion}")
+                    
+            return None
+        else:
+            print(f"❌ Struct `{struct_name}` not found in {root_dir}")
+            return None
 
     if not struct_files:
         print(f"❌ Struct `{struct_name}` not found in {root_dir}")
@@ -132,12 +210,50 @@ def find_correct_import(root_dir, struct_name, workspace_root=None):
 
     # Direct paths
     for file in struct_files:
-        module_path = get_module_path(file, root_dir)
-        use_statements.append((f"use {module_path}::{struct_name};", "direct"))
+        file_crate, file_crate_root = find_containing_crate(file)
+        if not file_crate:
+            continue
+            
+        # Get the relative path within the crate
+        crate_relative_path = os.path.relpath(file, file_crate_root)
+        parts = crate_relative_path.replace(".rs", "").split(os.sep)
+        
+        # Remove common parts like "src"
+        if "src" in parts:
+            parts.remove("src")
+        if parts[-1] == "mod":
+            parts = parts[:-1]
+            
+        module_path = "::".join(parts) if parts else ""
+        
+        # Generate import based on crate relationship
+        if current_crate and current_crate != file_crate:
+            # Importing from another crate in the workspace - use the direct crate name
+            # Convert hyphenated crate names to underscores as Rust does
+            normalized_crate = normalize_crate_name(file_crate)
+            
+            # Do NOT use the workspace name (e.g., datafusion) in the import
+            if module_path:
+                import_path = f"use {normalized_crate}::{module_path}::{struct_name};"
+            else:
+                import_path = f"use {normalized_crate}::{struct_name};"
+            use_statements.append((import_path, "direct (from another crate)"))
+        else:
+            # Same crate
+            if module_path:
+                import_path = f"use crate::{module_path}::{struct_name};"
+            else:
+                import_path = f"use crate::{struct_name};"
+            use_statements.append((import_path, "direct (same crate)"))
 
-    # Re-exports
+    # Re-exports 
+    # (update this section as well to avoid circular dependencies)
     for rel_path, reexport in re_exports:
-        # Normalize re-exported use
+        # Avoid any re-exports that would cause circular dependencies
+        if current_crate and (reexport.startswith("datafusion::") or "::datafusion::" in reexport):
+            continue
+        
+        # Only include re-exports that could be useful
         if reexport.startswith("crate::"):
             short_path = f"use crate::{struct_name};"
             use_statements.append((short_path, f"re-exported via {rel_path}"))
@@ -171,7 +287,7 @@ if __name__ == "__main__":
     print(f"📦 Workspace root: {workspace_root}")
     print(f"🔍 Searching for `{struct_name}`...\n")
 
-    use_statements = find_correct_import(str(workspace_root), struct_name, workspace_root)
+    use_statements = find_correct_import(str(workspace_root), struct_name, workspace_root, crate_name)
 
     if use_statements:
         print("\n🎯 Suggested `use` statements:")
