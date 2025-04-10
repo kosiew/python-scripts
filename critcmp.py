@@ -95,7 +95,15 @@ def analyze(
     ),
     detailed: bool = typer.Option(False, "--detailed", help="Show detailed metrics"),
 ):
-    """Analyze Criterion benchmark results and summarize improvements and regressions."""
+    """Analyze Criterion benchmark results and summarize improvements and regressions.
+
+    This script should be run after executing 'cargo bench' twice:
+    1. First run 'cargo bench' for your baseline/current code
+    2. Then make your changes and run 'cargo bench' again
+
+    The script will then analyze and summarize the performance differences between
+    the baseline and your changes, highlighting improvements and regressions.
+    """
     # Set default output file if not specified
     if output_file is None:
         output_file = get_default_output_file(criterion_dir)
