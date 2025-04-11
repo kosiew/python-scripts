@@ -317,7 +317,8 @@ def analyze(
         help="P-value threshold for statistical significance (default: 0.05)",
     ),
 ):
-    """Analyze Criterion benchmark results and summarize improvements and regressions.
+    """Analyze Criterion benchmark results and summarize improvements and regressions. First run 'cargo bench' with --save-baseline base on baseline branch, then 'cargo bench' with --baseline base on the feature branch.
+    This command will parse the benchmark reports and generate a summary of changes.
 
     This script should be run after executing 'cargo bench' twice:
     1. First run 'cargo bench' for your baseline/current code
@@ -468,7 +469,10 @@ def compare_and_report(
         help="Output file for the comparison report",
     ),
 ):
-    """Compare benchmarks between two branches and generate a report.
+    """Compare benchmarks between two branches and generate a report. It is normally run automatically by the 'compare_branches' command.
+
+    NOTE: This command is normally run automatically by the 'compare_branches' command.
+    It is exposed as a separate command only for troubleshooting purposes.
 
     This command uses critcmp to compare benchmark results between main_branch and feature_branch.
     It generates a formatted report showing performance improvements and regressions.
