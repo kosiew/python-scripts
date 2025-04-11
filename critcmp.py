@@ -187,6 +187,105 @@ def format_percentage(value: float) -> str:
         return f"[red]+{value:.2f}%[/red]"  # Regression
 
 
+def collect_benchmark_results(benchmark_dirs, threshold, p_value_threshold):
+    """Collect and filter benchmark results that meet significance criteria."""
+    results = []
+
+    for benchmark_dir in benchmark_dirs:
+        print(f"\n==> Processing benchmark: {benchmark_dir.name}")
+        data = parse_benchmark_report(benchmark_dir)
+        if not data:
+            print(f"==> No data found for {benchmark_dir.name}")
+            continue
+
+        change_data = get_benchmark_change(data)
+        if not change_data:
+            print(f"==> No valid change data for {benchmark_dir.name}")
+            continue
+
+        print(
+            f"==> Checking threshold: abs({change_data['mean_pct']:.2f}) >= {threshold} = {abs(change_data['mean_pct']) >= threshold}"
+        )
+        print(
+            f"==> Checking p-value: {change_data['mean_p_value']} < {p_value_threshold} = {change_data['mean_p_value'] < p_value_threshold}"
+        )
+
+        # Only include changes above threshold AND statistically significant
+        if (
+            abs(change_data["mean_pct"]) >= threshold
+            and change_data["mean_p_value"] < p_value_threshold
+        ):
+            print(f"==> INCLUDED: Benchmark '{benchmark_dir.name}' meets criteria")
+
+            result = (
+                benchmark_dir.name,
+                change_data["mean_pct"],
+                change_data["mean_p_value"],
+                change_data["median_pct"],
+            )
+            results.append(result)
+        else:
+            print(
+                f"==> EXCLUDED: Benchmark '{benchmark_dir.name}' doesn't meet criteria"
+            )
+
+    return results
+
+
+def build_results_table(results, detailed=False):
+    """Build a table from benchmark results."""
+    table = Table(
+        title="Criterion Benchmark Summary (Statistically Significant Changes)"
+    )
+    table.add_column("Benchmark", style="cyan")
+    table.add_column("Mean Change", justify="right")
+    table.add_column("P-value", justify="right")
+
+    if detailed:
+        table.add_column("Median Change", justify="right")
+
+    for result in results:
+        benchmark_name = result[0]
+        mean_pct = result[1]
+        p_value = f"{result[2]:.6f}"
+        mean_formatted = format_percentage(mean_pct)
+
+        if detailed and len(result) > 3:
+            median_formatted = format_percentage(result[3])
+            table.add_row(benchmark_name, mean_formatted, p_value, median_formatted)
+        else:
+            table.add_row(benchmark_name, mean_formatted, p_value)
+
+    return table
+
+
+def save_results_to_file(results, output_file, p_value_threshold):
+    """Save benchmark results to a file."""
+    improvements = sum(1 for r in results if r[1] < 0)
+    regressions = sum(1 for r in results if r[1] > 0)
+
+    with open(output_file, "w") as f:
+        f.write(
+            f"Criterion Benchmark Summary (Statistically Significant Changes p < {p_value_threshold})\n\n"
+        )
+        for result in results:
+            benchmark_name = result[0]
+            mean_pct = result[1]
+            p_value = result[2]
+            sign = "-" if mean_pct < 0 else "+"
+            f.write(f"{benchmark_name}: {sign}{abs(mean_pct):.2f}% (p={p_value:.6f})\n")
+        f.write(f"\nSummary: {improvements} improvements, {regressions} regressions\n")
+
+    console.print(f"Results saved to {output_file}")
+
+
+def get_summary_stats(results):
+    """Calculate summary statistics from results."""
+    improvements = sum(1 for r in results if r[1] < 0)
+    regressions = sum(1 for r in results if r[1] > 0)
+    return improvements, regressions
+
+
 @app.command()
 def analyze(
     criterion_dir: Path = typer.Option(
@@ -229,134 +328,30 @@ def analyze(
     if output_file is None:
         output_file = get_default_output_file(criterion_dir)
 
-    # Create table for results
-    table = Table(
-        title="Criterion Benchmark Summary (Statistically Significant Changes)"
-    )
-    table.add_column("Benchmark", style="cyan")
-    table.add_column("Mean Change", justify="right")
-    table.add_column("P-value", justify="right")
-
-    if detailed:
-        table.add_column("Median Change", justify="right")
-
     # Find all benchmark directories
     benchmark_dirs = [
         d for d in criterion_dir.iterdir() if d.is_dir() and d.name != "report"
     ]
 
-    results = []
-    for benchmark_dir in benchmark_dirs:
-        print(f"\n==> Processing benchmark: {benchmark_dir.name}")
-        data = parse_benchmark_report(benchmark_dir)
-        if data:
-            change_data = get_benchmark_change(data)
-            if change_data:
-                print(
-                    f"==> Checking threshold: abs({change_data['mean_pct']:.2f}) >= {threshold} = {abs(change_data['mean_pct']) >= threshold}"
-                )
-                print(
-                    f"==> Checking p-value: {change_data['mean_p_value']} < {p_value_threshold} = {change_data['mean_p_value'] < p_value_threshold}"
-                )
-
-                # Only include changes above threshold AND statistically significant
-                if (
-                    abs(change_data["mean_pct"]) >= threshold
-                    and change_data["mean_p_value"] < p_value_threshold
-                ):
-                    print(
-                        f"==> INCLUDED: Benchmark '{benchmark_dir.name}' meets criteria"
-                    )
-                    benchmark_name = benchmark_dir.name
-                    mean_formatted = format_percentage(change_data["mean_pct"])
-                    p_value = f"{change_data['mean_p_value']:.6f}"
-
-                    if detailed:
-                        median_formatted = format_percentage(change_data["median_pct"])
-                        table.add_row(
-                            benchmark_name, mean_formatted, p_value, median_formatted
-                        )
-                        results.append(
-                            (
-                                benchmark_name,
-                                change_data["mean_pct"],
-                                change_data["mean_p_value"],
-                                change_data["median_pct"],
-                            )
-                        )
-                    else:
-                        table.add_row(benchmark_name, mean_formatted, p_value)
-                        results.append(
-                            (
-                                benchmark_name,
-                                change_data["mean_pct"],
-                                change_data["mean_p_value"],
-                            )
-                        )
-                else:
-                    print(
-                        f"==> EXCLUDED: Benchmark '{benchmark_dir.name}' doesn't meet criteria"
-                    )
-            else:
-                print(f"==> No valid change data for {benchmark_dir.name}")
-        else:
-            print(f"==> No data found for {benchmark_dir.name}")
+    # Collect and filter benchmark results
+    results = collect_benchmark_results(benchmark_dirs, threshold, p_value_threshold)
 
     # Sort results by benchmark name
     results.sort(key=lambda x: x[0])
 
-    # Rebuild the table with sorted results
-    table = Table(
-        title="Criterion Benchmark Summary (Statistically Significant Changes)"
-    )
-    table.add_column("Benchmark", style="cyan")
-    table.add_column("Mean Change", justify="right")
-    table.add_column("P-value", justify="right")
-
-    if detailed:
-        table.add_column("Median Change", justify="right")
-
-    for result in results:
-        benchmark_name = result[0]
-        mean_pct = result[1]
-        p_value = f"{result[2]:.6f}"
-        mean_formatted = format_percentage(mean_pct)
-
-        if detailed and len(result) > 3:
-            median_formatted = format_percentage(result[3])
-            table.add_row(benchmark_name, mean_formatted, p_value, median_formatted)
-        else:
-            table.add_row(benchmark_name, mean_formatted, p_value)
-
-    # Display results
+    # Build and display results table
+    table = build_results_table(results, detailed)
     console.print(table)
 
-    # Summary statistics
-    improvements = sum(1 for r in results if r[1] < 0)
-    regressions = sum(1 for r in results if r[1] > 0)
-
+    # Display summary statistics
+    improvements, regressions = get_summary_stats(results)
     console.print(
         f"\nSummary: {improvements} improvements, {regressions} regressions (p < {p_value_threshold})"
     )
 
-    # Save to file if requested
+    # Save results to file if requested
     if output_file:
-        with open(output_file, "w") as f:
-            f.write(
-                f"Criterion Benchmark Summary (Statistically Significant Changes p < {p_value_threshold})\n\n"
-            )
-            for result in results:
-                benchmark_name = result[0]
-                mean_pct = result[1]
-                p_value = result[2]
-                sign = "-" if mean_pct < 0 else "+"
-                f.write(
-                    f"{benchmark_name}: {sign}{abs(mean_pct):.2f}% (p={p_value:.6f})\n"
-                )
-            f.write(
-                f"\nSummary: {improvements} improvements, {regressions} regressions\n"
-            )
-        console.print(f"Results saved to {output_file}")
+        save_results_to_file(results, output_file, p_value_threshold)
 
 
 if __name__ == "__main__":
