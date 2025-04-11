@@ -448,48 +448,102 @@ def compare_and_report(main_branch, feature_branch, output_file):
         f"📊 Comparing benchmarks: {main_branch} vs {feature_branch}",
         style="bold green",
     )
+
+    # Get comparison result
     comparison_result = run_command_with_output(
         ["critcmp", main_branch, feature_branch]
     )
 
-    # Save output to file
-    with open(output_file, "w") as f:
-        f.write(comparison_result)
+    # Parse the comparison result to extract benchmark data
+    benchmark_results = parse_critcmp_output(comparison_result)
 
-    # Display the result with color highlighting
-    highlight_comparison_result(comparison_result)
+    # Build and display a table with the results
+    table = build_comparison_table(benchmark_results)
+    console.print(table)
+
+    # Calculate and display summary statistics
+    improvements, regressions = calculate_comparison_stats(benchmark_results)
+    console.print(
+        f"\nSummary: {improvements} improvements, {regressions} regressions",
+        style="bold blue",
+    )
+
+    # Save formatted results to file
+    save_comparison_to_file(benchmark_results, output_file, main_branch, feature_branch)
 
     console.print(f"✅ Report saved to: {output_file}", style="bold green")
 
 
-def run_command(command):
-    """Run a shell command and exit on failure."""
-    subprocess.run(command, check=True)
+def parse_critcmp_output(output_text):
+    """Parse the critcmp output text to extract benchmark data."""
+    results = []
+    lines = output_text.strip().split("\n")
 
-
-def run_command_with_output(command):
-    """Run a shell command and return its output as string."""
-    result = subprocess.run(command, check=True, capture_output=True, text=True)
-    return result.stdout
-
-
-def highlight_comparison_result(text):
-    """Highlight improvements and regressions in the comparison result."""
-    lines = text.split("\n")
     for line in lines:
-        if "inst/s" in line and ":" in line:
-            parts = line.split(":")
-            benchmark_name = parts[0].strip()
-            stats = parts[1].strip()
+        # Skip header lines or empty lines
+        if not line or "inst/s" not in line or ":" not in line:
+            continue
 
-            if "-" in stats and not stats.startswith("-"):  # Improvement
-                rprint(f"[cyan]{benchmark_name}:[/cyan] [green]{stats}[/green]")
-            elif "+" in stats:  # Regression
-                rprint(f"[cyan]{benchmark_name}:[/cyan] [red]{stats}[/red]")
-            else:
-                rprint(f"[cyan]{benchmark_name}:[/cyan] {stats}")
-        else:
-            print(line)
+        parts = line.split(":")
+        benchmark_name = parts[0].strip()
+        stats = parts[1].strip()
+
+        # Extract the percentage change
+        percentage_change = 0.0
+        if "-" in stats and not stats.startswith("-"):  # Improvement
+            match = re.search(r"(-\d+\.\d+)%", stats)
+            if match:
+                percentage_change = float(match.group(1))
+        elif "+" in stats:  # Regression
+            match = re.search(r"\+(\d+\.\d+)%", stats)
+            if match:
+                percentage_change = float(match.group(1))
+
+        # We don't have p-values from critcmp, so use a placeholder
+        p_value = 0.0  # Placeholder
+
+        results.append((benchmark_name, percentage_change, p_value))
+
+    return results
+
+
+def build_comparison_table(results):
+    """Build a table from comparison results."""
+    table = Table(title=f"Benchmark Comparison Results")
+    table.add_column("Benchmark", style="cyan")
+    table.add_column("Change", justify="right")
+
+    for result in results:
+        benchmark_name = result[0]
+        percentage = result[1]
+        formatted_change = format_percentage(percentage)
+
+        table.add_row(benchmark_name, formatted_change)
+
+    return table
+
+
+def calculate_comparison_stats(results):
+    """Calculate summary statistics from comparison results."""
+    improvements = sum(1 for r in results if r[1] < 0)
+    regressions = sum(1 for r in results if r[1] > 0)
+    return improvements, regressions
+
+
+def save_comparison_to_file(results, output_file, main_branch, feature_branch):
+    """Save comparison results to a file."""
+    improvements, regressions = calculate_comparison_stats(results)
+
+    with open(output_file, "w") as f:
+        f.write(f"Benchmark Comparison: {main_branch} vs {feature_branch}\n\n")
+
+        for result in results:
+            benchmark_name = result[0]
+            percentage = result[1]
+            sign = "-" if percentage < 0 else "+"
+            f.write(f"{benchmark_name}: {sign}{abs(percentage):.2f}%\n")
+
+        f.write(f"\nSummary: {improvements} improvements, {regressions} regressions\n")
 
 
 if __name__ == "__main__":
