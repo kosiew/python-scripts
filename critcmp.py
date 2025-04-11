@@ -434,6 +434,8 @@ def run_command(command):
 def run_command_with_output(command):
     """Run a shell command and return its output as string."""
     result = subprocess.run(command, check=True, capture_output=True, text=True)
+    print(f"==> Command output length: {len(result.stdout)} characters")
+    print(f"==> First 100 chars of output: {result.stdout[:100]}")
     return result.stdout
 
 
@@ -453,20 +455,39 @@ def run_benchmark(branch_name, bench_name, profile):
     )
 
 
-def compare_and_report(main_branch, feature_branch, output_file):
-    """Compare benchmarks and generate a report."""
+@app.command()
+def compare_and_report(
+    main_branch: str = typer.Argument(..., help="Main branch name for comparison"),
+    feature_branch: str = typer.Argument(
+        ..., help="Feature branch name for comparison"
+    ),
+    output_file: Path = typer.Option(
+        Path("target/criterion/report/comparison.txt"),
+        "--output",
+        "-o",
+        help="Output file for the comparison report",
+    ),
+):
+    """Compare benchmarks between two branches and generate a report.
+
+    This command uses critcmp to compare benchmark results between main_branch and feature_branch.
+    It generates a formatted report showing performance improvements and regressions.
+    """
     console.print(
         f"📊 Comparing benchmarks: {main_branch} vs {feature_branch}",
         style="bold green",
     )
 
     # Get comparison result
+    print(f"==> Running critcmp command: critcmp {main_branch} {feature_branch}")
     comparison_result = run_command_with_output(
         ["critcmp", main_branch, feature_branch]
     )
+    print(f"==> Got comparison result of length: {len(comparison_result)}")
 
     # Parse the comparison result to extract benchmark data
     benchmark_results = parse_critcmp_output(comparison_result)
+    print(f"==> Parsed {len(benchmark_results)} benchmark results")
 
     # Build and display a table with the results
     table = build_comparison_table(benchmark_results)
@@ -489,15 +510,21 @@ def parse_critcmp_output(output_text):
     """Parse the critcmp output text to extract benchmark data."""
     results = []
     lines = output_text.strip().split("\n")
+    print(f"==> Parsing {len(lines)} lines from critcmp output")
+
+    for i, line in enumerate(lines[:10]):  # Print first 10 lines for debugging
+        print(f"==> Line {i}: '{line}'")
 
     for line in lines:
         # Skip header lines or empty lines
         if not line or "inst/s" not in line or ":" not in line:
             continue
 
+        print(f"==> Processing line: '{line}'")
         parts = line.split(":")
         benchmark_name = parts[0].strip()
         stats = parts[1].strip()
+        print(f"==> Benchmark: '{benchmark_name}', Stats: '{stats}'")
 
         # Extract the percentage change
         percentage_change = 0.0
@@ -505,16 +532,21 @@ def parse_critcmp_output(output_text):
             match = re.search(r"(-\d+\.\d+)%", stats)
             if match:
                 percentage_change = float(match.group(1))
+                print(f"==> Found improvement: {percentage_change}%")
         elif "+" in stats:  # Regression
             match = re.search(r"\+(\d+\.\d+)%", stats)
             if match:
                 percentage_change = float(match.group(1))
+                print(f"==> Found regression: {percentage_change}%")
+        else:
+            print(f"==> No percentage change found in: '{stats}'")
 
         # We don't have p-values from critcmp, so use a placeholder
         p_value = 0.0  # Placeholder
 
         results.append((benchmark_name, percentage_change, p_value))
 
+    print(f"==> Final results count: {len(results)}")
     return results
 
 
