@@ -2,6 +2,8 @@
 
 import os
 import json
+from bs4 import BeautifulSoup
+import re
 import typer
 from typing import Optional, List
 from pathlib import Path
@@ -25,24 +27,88 @@ def find_criterion_dir() -> Path:
     )
 
 
-def parse_estimates_json(benchmark_dir: Path) -> dict:
-    """Parse the estimates.json file for a benchmark to extract performance data."""
-    change_file = benchmark_dir / "change" / "estimates.json"
-    print(f"==> Checking for file: {change_file}")
-    if not change_file.exists():
-        print(f"==> File does not exist: {change_file}")
+def parse_benchmark_report(benchmark_dir: Path) -> dict:
+    """Parse the index.html report file for a benchmark to extract performance data."""
+    report_file = benchmark_dir / "report" / "index.html"
+    print(f"==> Checking for file: {report_file}")
+    if not report_file.exists():
+        print(f"==> File does not exist: {report_file}")
         return None
 
-    with open(change_file, "r") as f:
-        data = json.load(f)
-    print(f"==> Loaded data for {benchmark_dir.name}, keys: {list(data.keys())}")
-    if "mean" in data:
-        print(f"==> Mean data keys: {list(data['mean'].keys())}")
-        if "p_value" in data["mean"]:
-            print(f"==> Found p_value: {data['mean']['p_value']}")
-        else:
-            print(f"==> No p_value found in mean data")
-    return data
+    try:
+        with open(report_file, "r") as f:
+            html_content = f.read()
+
+        soup = BeautifulSoup(html_content, "html.parser")
+        print(f"==> Successfully parsed HTML for {benchmark_dir.name}")
+
+        # Extract performance data from the HTML
+        data = {}
+
+        # Find tables that contain performance data
+        tables = soup.find_all("table")
+        print(f"==> Found {len(tables)} tables in the report")
+
+        for table in tables:
+            # Find rows that contain "Change in time"
+            change_rows = table.find_all(
+                "tr",
+                string=lambda text: (
+                    text and "Change in time" in text if text else False
+                ),
+            )
+            if not change_rows:
+                # Try another approach - find td with "Change in time" text
+                for row in table.find_all("tr"):
+                    cells = row.find_all("td")
+                    if cells and len(cells) > 0 and "Change in time" in cells[0].text:
+                        print(f"==> Found 'Change in time' row")
+
+                        # The percentage change is in the middle column (index 2)
+                        if len(cells) > 2:
+                            change_text = cells[2].text.strip()
+                            change_match = re.search(r"([+-]?\d+\.\d+)%", change_text)
+                            if change_match:
+                                percentage = float(change_match.group(1))
+                                print(f"==> Found percentage change: {percentage}%")
+                                if "mean" not in data:
+                                    data["mean"] = {}
+                                data["mean"]["point_estimate"] = percentage / 100
+
+                        # The p-value is in the last column
+                        if len(cells) > 4:
+                            p_value_text = cells[4].text.strip()
+                            p_value_match = re.search(
+                                r"p\s*=\s*(\d+\.\d+)", p_value_text
+                            )
+                            if (
+                                not p_value_match
+                            ):  # Try another format for p = 0.00 < 0.05
+                                p_value_match = re.search(
+                                    r"p\s*=\s*(\d+\.\d+)\s*[<>=]", p_value_text
+                                )
+
+                            if p_value_match:
+                                p_value = float(p_value_match.group(1))
+                                print(f"==> Found p-value: {p_value}")
+                                if "mean" not in data:
+                                    data["mean"] = {}
+                                data["mean"]["p_value"] = p_value
+
+        # If we found mean data, add a placeholder for median with the same values
+        # This is a simplification since your HTML example only showed one row
+        if "mean" in data:
+            data["median"] = data["mean"].copy()
+
+        print(f"==> Extracted data: {data}")
+        return data
+
+    except Exception as e:
+        print(f"==> Error parsing report: {e}")
+        import traceback
+
+        print(traceback.format_exc())
+        return None
 
 
 def get_benchmark_change(data: dict) -> dict:
@@ -153,7 +219,7 @@ def analyze(
     results = []
     for benchmark_dir in benchmark_dirs:
         print(f"\n==> Processing benchmark: {benchmark_dir.name}")
-        data = parse_estimates_json(benchmark_dir)
+        data = parse_benchmark_report(benchmark_dir)
         if data:
             change_data = get_benchmark_change(data)
             if change_data:
