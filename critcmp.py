@@ -28,17 +28,27 @@ def find_criterion_dir() -> Path:
 def parse_estimates_json(benchmark_dir: Path) -> dict:
     """Parse the estimates.json file for a benchmark to extract performance data."""
     change_file = benchmark_dir / "change" / "estimates.json"
+    print(f"==> Checking for file: {change_file}")
     if not change_file.exists():
+        print(f"==> File does not exist: {change_file}")
         return None
 
     with open(change_file, "r") as f:
         data = json.load(f)
+    print(f"==> Loaded data for {benchmark_dir.name}, keys: {list(data.keys())}")
+    if "mean" in data:
+        print(f"==> Mean data keys: {list(data['mean'].keys())}")
+        if "p_value" in data["mean"]:
+            print(f"==> Found p_value: {data['mean']['p_value']}")
+        else:
+            print(f"==> No p_value found in mean data")
     return data
 
 
 def get_benchmark_change(data: dict) -> dict:
     """Extract the relevant change metrics from the estimates data."""
     if not data or "mean" not in data:
+        print(f"==> Invalid data format in get_benchmark_change")
         return None
 
     result = {
@@ -53,6 +63,9 @@ def get_benchmark_change(data: dict) -> dict:
             "p_value", 1.0
         ),  # Default to 1.0 if not present
     }
+    print(
+        f"==> Extracted change data: mean_pct={result['mean_pct']:.2f}%, p_value={result['mean_p_value']}"
+    )
     return result
 
 
@@ -139,15 +152,26 @@ def analyze(
 
     results = []
     for benchmark_dir in benchmark_dirs:
+        print(f"\n==> Processing benchmark: {benchmark_dir.name}")
         data = parse_estimates_json(benchmark_dir)
         if data:
             change_data = get_benchmark_change(data)
             if change_data:
+                print(
+                    f"==> Checking threshold: abs({change_data['mean_pct']:.2f}) >= {threshold} = {abs(change_data['mean_pct']) >= threshold}"
+                )
+                print(
+                    f"==> Checking p-value: {change_data['mean_p_value']} < {p_value_threshold} = {change_data['mean_p_value'] < p_value_threshold}"
+                )
+
                 # Only include changes above threshold AND statistically significant
                 if (
                     abs(change_data["mean_pct"]) >= threshold
                     and change_data["mean_p_value"] < p_value_threshold
                 ):
+                    print(
+                        f"==> INCLUDED: Benchmark '{benchmark_dir.name}' meets criteria"
+                    )
                     benchmark_name = benchmark_dir.name
                     mean_formatted = format_percentage(change_data["mean_pct"])
                     p_value = f"{change_data['mean_p_value']:.6f}"
@@ -174,6 +198,14 @@ def analyze(
                                 change_data["mean_p_value"],
                             )
                         )
+                else:
+                    print(
+                        f"==> EXCLUDED: Benchmark '{benchmark_dir.name}' doesn't meet criteria"
+                    )
+            else:
+                print(f"==> No valid change data for {benchmark_dir.name}")
+        else:
+            print(f"==> No data found for {benchmark_dir.name}")
 
     # Display results
     console.print(table)
