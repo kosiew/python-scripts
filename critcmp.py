@@ -10,6 +10,8 @@ from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 from rich import print as rprint
+import subprocess
+import sys
 
 app = typer.Typer()
 console = Console()
@@ -352,6 +354,131 @@ def analyze(
     # Save results to file if requested
     if output_file:
         save_results_to_file(results, output_file, p_value_threshold)
+
+
+@app.command()
+def compare_branches(
+    main_branch: str = typer.Argument(..., help="Main branch name"),
+    feature_branch: str = typer.Argument(..., help="Feature branch name"),
+    bench_name: str = typer.Option(
+        "binary_op", "--bench", "-b", help="Benchmark name to run"
+    ),
+    profile: str = typer.Option(
+        "profiling", "--profile", "-p", help="Cargo profile to use"
+    ),
+    output_file: str = typer.Option(
+        "target/criterion/report/critcmp.txt",
+        "--output",
+        "-o",
+        help="Output file for the comparison report",
+    ),
+):
+    """
+    Compare benchmark results between two git branches.
+
+    This command:
+    1. Checks out the main branch and runs benchmarks
+    2. Checks out the feature branch and runs benchmarks
+    3. Compares the results and generates a report
+    """
+    try:
+        # Ensure output directory exists
+        prepare_output_directory(output_file)
+
+        # Run benchmarks on both branches
+        benchmark_branch(main_branch, bench_name, profile)
+        benchmark_branch(feature_branch, bench_name, profile)
+
+        # Compare and report results
+        compare_and_report(main_branch, feature_branch, output_file)
+
+    except subprocess.CalledProcessError as e:
+        console.print(f"❌ Error executing command: {e}", style="bold red")
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"❌ Unexpected error: {e}", style="bold red")
+        sys.exit(1)
+
+
+def prepare_output_directory(output_file):
+    """Ensure the output directory exists."""
+    output_dir = os.path.dirname(output_file)
+    os.makedirs(output_dir, exist_ok=True)
+
+
+def benchmark_branch(branch_name, bench_name, profile):
+    """Checkout a branch and run benchmarks on it."""
+    console.print(
+        f"🔁 Checking out {branch_name} and benchmarking...", style="bold blue"
+    )
+    run_command(["git", "checkout", branch_name])
+    run_benchmark(branch_name, bench_name, profile)
+
+
+def run_benchmark(branch_name, bench_name, profile):
+    """Run the benchmark with the specified parameters."""
+    run_command(
+        [
+            "cargo",
+            "bench",
+            "--bench",
+            bench_name,
+            f"--profile={profile}",
+            "--",
+            f"--save-baseline",
+            branch_name,
+        ]
+    )
+
+
+def compare_and_report(main_branch, feature_branch, output_file):
+    """Compare benchmarks and generate a report."""
+    console.print(
+        f"📊 Comparing benchmarks: {main_branch} vs {feature_branch}",
+        style="bold green",
+    )
+    comparison_result = run_command_with_output(
+        ["critcmp", main_branch, feature_branch]
+    )
+
+    # Save output to file
+    with open(output_file, "w") as f:
+        f.write(comparison_result)
+
+    # Display the result with color highlighting
+    highlight_comparison_result(comparison_result)
+
+    console.print(f"✅ Report saved to: {output_file}", style="bold green")
+
+
+def run_command(command):
+    """Run a shell command and exit on failure."""
+    subprocess.run(command, check=True)
+
+
+def run_command_with_output(command):
+    """Run a shell command and return its output as string."""
+    result = subprocess.run(command, check=True, capture_output=True, text=True)
+    return result.stdout
+
+
+def highlight_comparison_result(text):
+    """Highlight improvements and regressions in the comparison result."""
+    lines = text.split("\n")
+    for line in lines:
+        if "inst/s" in line and ":" in line:
+            parts = line.split(":")
+            benchmark_name = parts[0].strip()
+            stats = parts[1].strip()
+
+            if "-" in stats and not stats.startswith("-"):  # Improvement
+                rprint(f"[cyan]{benchmark_name}:[/cyan] [green]{stats}[/green]")
+            elif "+" in stats:  # Regression
+                rprint(f"[cyan]{benchmark_name}:[/cyan] [red]{stats}[/red]")
+            else:
+                rprint(f"[cyan]{benchmark_name}:[/cyan] {stats}")
+        else:
+            print(line)
 
 
 if __name__ == "__main__":
