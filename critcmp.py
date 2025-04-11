@@ -273,6 +273,32 @@ def analyze(
         else:
             print(f"==> No data found for {benchmark_dir.name}")
 
+    # Sort results by benchmark name
+    results.sort(key=lambda x: x[0])
+
+    # Rebuild the table with sorted results
+    table = Table(
+        title="Criterion Benchmark Summary (Statistically Significant Changes)"
+    )
+    table.add_column("Benchmark", style="cyan")
+    table.add_column("Mean Change", justify="right")
+    table.add_column("P-value", justify="right")
+
+    if detailed:
+        table.add_column("Median Change", justify="right")
+
+    for result in results:
+        benchmark_name = result[0]
+        mean_pct = result[1]
+        p_value = f"{result[2]:.6f}"
+        mean_formatted = format_percentage(mean_pct)
+
+        if detailed and len(result) > 3:
+            median_formatted = format_percentage(result[3])
+            table.add_row(benchmark_name, mean_formatted, p_value, median_formatted)
+        else:
+            table.add_row(benchmark_name, mean_formatted, p_value)
+
     # Display results
     console.print(table)
 
