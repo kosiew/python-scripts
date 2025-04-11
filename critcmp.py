@@ -12,6 +12,7 @@ from rich.table import Table
 from rich import print as rprint
 import subprocess
 import sys
+import time  # Add this import for time tracking
 
 app = typer.Typer()
 console = Console()
@@ -382,6 +383,9 @@ def compare_branches(
     3. Compares the results and generates a report
     """
     try:
+        # Start timing
+        start_time = time.time()
+
         # Ensure output directory exists
         prepare_output_directory(output_file)
 
@@ -391,6 +395,13 @@ def compare_branches(
 
         # Compare and report results
         compare_and_report(main_branch, feature_branch, output_file)
+
+        # Calculate and display time taken
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        minutes = int(elapsed_time // 60)
+        seconds = int(elapsed_time % 60)
+        console.print(f"⏱️ Total time taken: {minutes}m {seconds}s", style="bold green")
 
     except subprocess.CalledProcessError as e:
         console.print(f"❌ Error executing command: {e}", style="bold red")
