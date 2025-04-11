@@ -44,8 +44,14 @@ def get_benchmark_change(data: dict) -> dict:
     result = {
         "mean_change": data["mean"]["point_estimate"],
         "mean_pct": data["mean"]["point_estimate"] * 100,
+        "mean_p_value": data["mean"].get(
+            "p_value", 1.0
+        ),  # Default to 1.0 if not present
         "median_change": data["median"]["point_estimate"],
         "median_pct": data["median"]["point_estimate"] * 100,
+        "median_p_value": data["median"].get(
+            "p_value", 1.0
+        ),  # Default to 1.0 if not present
     }
     return result
 
@@ -94,6 +100,12 @@ def analyze(
         help="Output file for the summary (defaults to <criterion_dir>/report/summary_critcmp.txt)",
     ),
     detailed: bool = typer.Option(False, "--detailed", help="Show detailed metrics"),
+    p_value_threshold: float = typer.Option(
+        0.05,
+        "--p-value",
+        "-p",
+        help="P-value threshold for statistical significance (default: 0.05)",
+    ),
 ):
     """Analyze Criterion benchmark results and summarize improvements and regressions.
 
@@ -103,15 +115,19 @@ def analyze(
 
     The script will then analyze and summarize the performance differences between
     the baseline and your changes, highlighting improvements and regressions.
+    Only statistically significant changes (p < 0.05) are included by default.
     """
     # Set default output file if not specified
     if output_file is None:
         output_file = get_default_output_file(criterion_dir)
 
     # Create table for results
-    table = Table(title="Criterion Benchmark Summary")
+    table = Table(
+        title="Criterion Benchmark Summary (Statistically Significant Changes)"
+    )
     table.add_column("Benchmark", style="cyan")
     table.add_column("Mean Change", justify="right")
+    table.add_column("P-value", justify="right")
 
     if detailed:
         table.add_column("Median Change", justify="right")
@@ -127,24 +143,37 @@ def analyze(
         if data:
             change_data = get_benchmark_change(data)
             if change_data:
-                # Only include changes above the threshold
-                if abs(change_data["mean_pct"]) >= threshold:
+                # Only include changes above threshold AND statistically significant
+                if (
+                    abs(change_data["mean_pct"]) >= threshold
+                    and change_data["mean_p_value"] < p_value_threshold
+                ):
                     benchmark_name = benchmark_dir.name
                     mean_formatted = format_percentage(change_data["mean_pct"])
+                    p_value = f"{change_data['mean_p_value']:.6f}"
 
                     if detailed:
                         median_formatted = format_percentage(change_data["median_pct"])
-                        table.add_row(benchmark_name, mean_formatted, median_formatted)
+                        table.add_row(
+                            benchmark_name, mean_formatted, p_value, median_formatted
+                        )
                         results.append(
                             (
                                 benchmark_name,
                                 change_data["mean_pct"],
+                                change_data["mean_p_value"],
                                 change_data["median_pct"],
                             )
                         )
                     else:
-                        table.add_row(benchmark_name, mean_formatted)
-                        results.append((benchmark_name, change_data["mean_pct"]))
+                        table.add_row(benchmark_name, mean_formatted, p_value)
+                        results.append(
+                            (
+                                benchmark_name,
+                                change_data["mean_pct"],
+                                change_data["mean_p_value"],
+                            )
+                        )
 
     # Display results
     console.print(table)
@@ -153,17 +182,24 @@ def analyze(
     improvements = sum(1 for r in results if r[1] < 0)
     regressions = sum(1 for r in results if r[1] > 0)
 
-    console.print(f"\nSummary: {improvements} improvements, {regressions} regressions")
+    console.print(
+        f"\nSummary: {improvements} improvements, {regressions} regressions (p < {p_value_threshold})"
+    )
 
     # Save to file if requested
     if output_file:
         with open(output_file, "w") as f:
-            f.write(f"Criterion Benchmark Summary\n\n")
+            f.write(
+                f"Criterion Benchmark Summary (Statistically Significant Changes p < {p_value_threshold})\n\n"
+            )
             for result in results:
                 benchmark_name = result[0]
                 mean_pct = result[1]
+                p_value = result[2]
                 sign = "-" if mean_pct < 0 else "+"
-                f.write(f"{benchmark_name}: {sign}{abs(mean_pct):.2f}%\n")
+                f.write(
+                    f"{benchmark_name}: {sign}{abs(mean_pct):.2f}% (p={p_value:.6f})\n"
+                )
             f.write(
                 f"\nSummary: {improvements} improvements, {regressions} regressions\n"
             )
