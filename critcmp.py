@@ -426,6 +426,17 @@ def benchmark_branch(branch_name, bench_name, profile):
     run_benchmark(branch_name, bench_name, profile)
 
 
+def run_command(command):
+    """Run a shell command and exit on failure."""
+    subprocess.run(command, check=True)
+
+
+def run_command_with_output(command):
+    """Run a shell command and return its output as string."""
+    result = subprocess.run(command, check=True, capture_output=True, text=True)
+    return result.stdout
+
+
 def run_benchmark(branch_name, bench_name, profile):
     """Run the benchmark with the specified parameters."""
     run_command(
