@@ -36,70 +36,14 @@ def parse_benchmark_report(benchmark_dir: Path) -> dict:
         return None
 
     try:
-        with open(report_file, "r") as f:
-            html_content = f.read()
+        soup = load_html_file(report_file)
+        if not soup:
+            return None
 
-        soup = BeautifulSoup(html_content, "html.parser")
         print(f"==> Successfully parsed HTML for {benchmark_dir.name}")
 
         # Extract performance data from the HTML
-        data = {}
-
-        # Find tables that contain performance data
-        tables = soup.find_all("table")
-        print(f"==> Found {len(tables)} tables in the report")
-
-        for table in tables:
-            # Find rows that contain "Change in time"
-            change_rows = table.find_all(
-                "tr",
-                string=lambda text: (
-                    text and "Change in time" in text if text else False
-                ),
-            )
-            if not change_rows:
-                # Try another approach - find td with "Change in time" text
-                for row in table.find_all("tr"):
-                    cells = row.find_all("td")
-                    if cells and len(cells) > 0 and "Change in time" in cells[0].text:
-                        print(f"==> Found 'Change in time' row")
-
-                        # The percentage change is in the middle column (index 2)
-                        if len(cells) > 2:
-                            change_text = cells[2].text.strip()
-                            change_match = re.search(r"([+-]?\d+\.\d+)%", change_text)
-                            if change_match:
-                                percentage = float(change_match.group(1))
-                                print(f"==> Found percentage change: {percentage}%")
-                                if "mean" not in data:
-                                    data["mean"] = {}
-                                data["mean"]["point_estimate"] = percentage / 100
-
-                        # The p-value is in the last column
-                        if len(cells) > 4:
-                            p_value_text = cells[4].text.strip()
-                            p_value_match = re.search(
-                                r"p\s*=\s*(\d+\.\d+)", p_value_text
-                            )
-                            if (
-                                not p_value_match
-                            ):  # Try another format for p = 0.00 < 0.05
-                                p_value_match = re.search(
-                                    r"p\s*=\s*(\d+\.\d+)\s*[<>=]", p_value_text
-                                )
-
-                            if p_value_match:
-                                p_value = float(p_value_match.group(1))
-                                print(f"==> Found p-value: {p_value}")
-                                if "mean" not in data:
-                                    data["mean"] = {}
-                                data["mean"]["p_value"] = p_value
-
-        # If we found mean data, add a placeholder for median with the same values
-        # This is a simplification since your HTML example only showed one row
-        if "mean" in data:
-            data["median"] = data["mean"].copy()
-
+        data = extract_performance_data(soup)
         print(f"==> Extracted data: {data}")
         return data
 
@@ -109,6 +53,91 @@ def parse_benchmark_report(benchmark_dir: Path) -> dict:
 
         print(traceback.format_exc())
         return None
+
+
+def load_html_file(file_path: Path):
+    """Load and parse an HTML file."""
+    try:
+        with open(file_path, "r") as f:
+            html_content = f.read()
+        return BeautifulSoup(html_content, "html.parser")
+    except Exception as e:
+        print(f"==> Error loading HTML file: {e}")
+        return None
+
+
+def extract_performance_data(soup) -> dict:
+    """Extract performance data from the HTML soup object."""
+    data = {}
+
+    # Find tables that contain performance data
+    tables = soup.find_all("table")
+    print(f"==> Found {len(tables)} tables in the report")
+
+    for table in tables:
+        process_table(table, data)
+
+    # If we found mean data, add a placeholder for median with the same values
+    # This is a simplification since the HTML example only showed one row
+    if "mean" in data and "median" not in data:
+        data["median"] = data["mean"].copy()
+
+    return data
+
+
+def process_table(table, data: dict):
+    """Process a table to find and extract change data."""
+    # Find rows that contain "Change in time"
+    for row in table.find_all("tr"):
+        cells = row.find_all("td")
+        if not cells or len(cells) == 0:
+            continue
+
+        if "Change in time" in cells[0].text:
+            print(f"==> Found 'Change in time' row")
+            extract_change_data_from_row(cells, data)
+
+
+def extract_change_data_from_row(cells, data: dict):
+    """Extract change percentage and p-value from a row cells."""
+    # The percentage change is in the middle column (index 2)
+    if len(cells) > 2:
+        percentage = extract_percentage_change(cells[2].text.strip())
+        if percentage is not None:
+            if "mean" not in data:
+                data["mean"] = {}
+            data["mean"]["point_estimate"] = percentage / 100
+
+    # The p-value is in the last column
+    if len(cells) > 4:
+        p_value = extract_p_value(cells[4].text.strip())
+        if p_value is not None:
+            if "mean" not in data:
+                data["mean"] = {}
+            data["mean"]["p_value"] = p_value
+
+
+def extract_percentage_change(text: str) -> float:
+    """Extract percentage change from text."""
+    change_match = re.search(r"([+-]?\d+\.\d+)%", text)
+    if change_match:
+        percentage = float(change_match.group(1))
+        print(f"==> Found percentage change: {percentage}%")
+        return percentage
+    return None
+
+
+def extract_p_value(text: str) -> float:
+    """Extract p-value from text."""
+    p_value_match = re.search(r"p\s*=\s*(\d+\.\d+)", text)
+    if not p_value_match:  # Try another format for p = 0.00 < 0.05
+        p_value_match = re.search(r"p\s*=\s*(\d+\.\d+)\s*[<>=]", text)
+
+    if p_value_match:
+        p_value = float(p_value_match.group(1))
+        print(f"==> Found p-value: {p_value}")
+        return p_value
+    return None
 
 
 def get_benchmark_change(data: dict) -> dict:
