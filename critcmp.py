@@ -512,42 +512,86 @@ def parse_critcmp_output(output_text):
     lines = output_text.strip().split("\n")
     print(f"==> Parsing {len(lines)} lines from critcmp output")
 
-    for i, line in enumerate(lines[:10]):  # Print first 10 lines for debugging
-        print(f"==> Line {i}: '{line}'")
+    # Skip header lines (first 2 lines)
+    data_lines = lines[2:] if len(lines) > 2 else []
 
-    for line in lines:
-        # Skip header lines or empty lines
-        if not line or "inst/s" not in line or ":" not in line:
+    for line in data_lines:
+        print(f"==> Processing line: '{line}'")
+
+        # Skip if line is empty or doesn't have enough data
+        if not line or len(line.strip()) < 10:
             continue
 
-        print(f"==> Processing line: '{line}'")
-        parts = line.split(":")
-        benchmark_name = parts[0].strip()
-        stats = parts[1].strip()
-        print(f"==> Benchmark: '{benchmark_name}', Stats: '{stats}'")
+        # Split the line into parts based on whitespace
+        parts = line.split()
+        if len(parts) < 7:
+            print(f"==> Skipping line with insufficient parts: {len(parts)}")
+            continue
 
-        # Extract the percentage change
-        percentage_change = 0.0
-        if "-" in stats and not stats.startswith("-"):  # Improvement
-            match = re.search(r"(-\d+\.\d+)%", stats)
-            if match:
-                percentage_change = float(match.group(1))
-                print(f"==> Found improvement: {percentage_change}%")
-        elif "+" in stats:  # Regression
-            match = re.search(r"\+(\d+\.\d+)%", stats)
-            if match:
-                percentage_change = float(match.group(1))
-                print(f"==> Found regression: {percentage_change}%")
-        else:
-            print(f"==> No percentage change found in: '{stats}'")
+        # Extract benchmark name (might contain multiple parts)
+        # Find the index where numeric values start
+        name_end_idx = 0
+        for i, part in enumerate(parts):
+            if part[0].isdigit() or part[0] == ".":
+                name_end_idx = i
+                break
 
-        # We don't have p-values from critcmp, so use a placeholder
-        p_value = 0.0  # Placeholder
+        if name_end_idx == 0:
+            print(f"==> Could not determine benchmark name")
+            continue
 
-        results.append((benchmark_name, percentage_change, p_value))
+        benchmark_name = " ".join(parts[:name_end_idx])
+
+        # Try to extract time values - looking for patterns like "33.5±2.43ns"
+        time_pattern = re.compile(r"(\d+\.\d+)±\d+\.\d+(ns|µs|ms|s)")
+
+        # Find all time values in the line
+        time_matches = time_pattern.findall(line)
+        if len(time_matches) < 2:
+            print(f"==> Could not find enough time values in: {line}")
+            continue
+
+        # Get the first time value and unit (feature branch)
+        feature_time = float(time_matches[0][0])
+        feature_unit = time_matches[0][1]
+
+        # Get the second time value and unit (main branch)
+        main_time = float(time_matches[1][0])
+        main_unit = time_matches[1][1]
+
+        # Convert to the same unit if different
+        if feature_unit != main_unit:
+            # Convert both to nanoseconds for comparison
+            feature_time = convert_to_ns(feature_time, feature_unit)
+            main_time = convert_to_ns(main_time, main_unit)
+
+        # Calculate percentage change (negative is improvement)
+        if main_time > 0:  # Avoid division by zero
+            percentage_change = ((feature_time - main_time) / main_time) * 100
+            print(
+                f"==> {benchmark_name}: feature={feature_time}{feature_unit}, main={main_time}{main_unit}, change={percentage_change:.2f}%"
+            )
+
+            # We don't have p-values from critcmp, so use a placeholder
+            p_value = 0.0
+
+            results.append((benchmark_name, percentage_change, p_value))
 
     print(f"==> Final results count: {len(results)}")
     return results
+
+
+def convert_to_ns(time_value, unit):
+    """Convert a time value to nanoseconds based on its unit."""
+    if unit == "ns":
+        return time_value
+    elif unit == "µs":
+        return time_value * 1000
+    elif unit == "ms":
+        return time_value * 1000000
+    elif unit == "s":
+        return time_value * 1000000000
+    return time_value  # Default case if unit is unknown
 
 
 def build_comparison_table(results):
