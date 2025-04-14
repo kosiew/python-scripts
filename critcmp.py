@@ -340,22 +340,30 @@ def analyze(
     # Collect and filter benchmark results
     results = collect_benchmark_results(benchmark_dirs, threshold, p_value_threshold)
 
-    # Sort results by benchmark name
-    results.sort(key=lambda x: x[0])
+    # Group results into improvements and regressions
+    improvements = [r for r in results if r[1] < 0]  # negative percentage = improvement
+    regressions = [r for r in results if r[1] >= 0]  # positive percentage = regression
+
+    # Sort each group by benchmark name
+    improvements.sort(key=lambda x: x[0])
+    regressions.sort(key=lambda x: x[0])
+
+    # Combine the sorted groups: improvements first, then regressions
+    sorted_results = improvements + regressions
 
     # Build and display results table
-    table = build_results_table(results, detailed)
+    table = build_results_table(sorted_results, detailed)
     console.print(table)
 
     # Display summary statistics
-    improvements, regressions = get_summary_stats(results)
+    improvement_count, regression_count = get_summary_stats(results)
     console.print(
-        f"\nSummary: {improvements} improvements, {regressions} regressions (p < {p_value_threshold})"
+        f"\nSummary: {improvement_count} improvements, {regression_count} regressions (p < {p_value_threshold})"
     )
 
     # Save results to file if requested
     if output_file:
-        save_results_to_file(results, output_file, p_value_threshold)
+        save_results_to_file(sorted_results, output_file, p_value_threshold)
 
 
 @app.command()
