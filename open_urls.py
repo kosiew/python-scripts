@@ -350,6 +350,12 @@ def show_available_items(section):
     bv_time.print_message("Available items", with_time_stamp=True, starred=True)
     bv_time.print_message(items, with_time_stamp=False, starred=False)
 
+def list_available_actions():
+    """Lists all available actions from configuration"""
+    bv_time.print_message("Available actions:", with_time_stamp=True, starred=True)
+    show_available_items(SECTION_URLS)
+    return
+
 @bv_time.print_timing
 def process_command(action: str, verbose: bool = False, reverse: bool = False):
     """Process the command and open URLs"""
@@ -378,10 +384,13 @@ def open_urls_command(
     action: str = typer.Argument(DEFAULT_ACTION[0], help="Action to perform (e.g. 'morning', 'gain', 'trade')"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose output"),
     test: bool = typer.Option(False, "--test", "-t", help="Run doctests"),
-    reverse: bool = typer.Option(False, "--reverse", "-r", help="Open URLs in reverse sort order")
+    reverse: bool = typer.Option(False, "--reverse", "-r", help="Open URLs in reverse sort order"),
+    list_actions: bool = typer.Option(False, "--list", "-l", help="List available actions and exit")
 ):
     """Opens URLs based on the specified action."""
-    if test:
+    if list_actions:
+        list_available_actions()
+    elif test:
         _test()
     else:
         process_command(action, verbose, reverse)
