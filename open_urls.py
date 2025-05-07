@@ -19,7 +19,9 @@ __license__ = "Python"
 import datetime
 import re
 import webbrowser
-from optparse import OptionParser
+# Replace optparse with typer
+import typer
+from typing import List, Optional
 
 # import aspect
 import bv_beautiful_soup
@@ -59,16 +61,6 @@ ITEM_SEND_BLOOMBERG_MAIL = "send_bloomberg_mail"
 
 MORNING = ITEM_MORNING
 
-# ITEMS = (
-#   ITEM_MORNING,
-#   ITEM_PALM,
-#   ITEM_EXCHANGE_RATES,
-#   ITEM_DUAL_CURRENCY_INVESTMENT_RATES,
-#   ITEM_GOOGLE_ADSENSE,
-#   ITEM_FUNDS,
-#   ITEM_GOLD,
-#   ITEM_NEWFIELD,
-# )
 ITEMS = []
 
 RE_URL_KEY_PATTERN = "(?P<index>\d{2})re (?P<name>\S{2,})"
@@ -82,10 +74,6 @@ ITEM_RE_PATTERNS = "re_patterns"
 
 SECTION_BS_PATTERNS = "bs_patterns"
 ITEM_BS_PATTERNS = "bs_patterns"
-
-parser = False
-options = False
-args = False
 
 DEFAULT_ACTION = [MORNING]
 PALM = ITEM_PALM
@@ -111,8 +99,6 @@ get_keyprefix.counter = 0
 
 def get_soup(url):
     """ """
-    #     r = requests.get(url)
-    #     result = BeautifulSoup(r.content, PARSER)
     result = bv_beautiful_soup.Soup(url)
     return result
 
@@ -238,7 +224,6 @@ def get_weekday_urls():
 
 def get_morning_urls():
     morning_urls = get_urls(ITEM_MORNING)
-    # morning_urls['05 the sun'] = get_thesun_url()
 
     items = [item for item in ITEMS if item != ITEM_MORNING]
     morning_urls = update_with_items_urls(morning_urls, items)
@@ -366,18 +351,16 @@ def show_available_items(section):
     bv_time.print_message(items, with_time_stamp=False, starred=False)
 
 @bv_time.print_timing
-def go(options=None, args=None):
+def process_command(action: str, verbose: bool = False):
+    """Process the command and open URLs"""
+    zd.output_to_stdout = verbose
     robot = bv_speak.Robot()
-    if len(args) == 0:
-        args = DEFAULT_ACTION
 
-    arg1 = args[0]
-
-    if arg1 == MORNING:
+    if action == MORNING:
         urls = get_morning_urls()
         open_urls(urls)
     else:
-        urls = get_urls(arg1)
+        urls = get_urls(action)
         open_urls(urls)
 
     if urls:
@@ -385,43 +368,22 @@ def go(options=None, args=None):
         robot.say(message)
         bv_time.print_message(message, with_time_stamp=True, starred=True)
     else:
-        message = f"No links to open for {arg1}"
+        message = f"No links to open for {action}"
         robot.say(message)
         bv_time.print_message(message, with_time_stamp=True, starred=True)
         show_available_items(SECTION_URLS)
 
-
-def get_options(argv):
-    """Returns None"""
-    global parser
-
-    usage = "usage: %prog [options] morning|gain|trade <stock_code1, stock_code2>"
-    parser = OptionParser(
-        usage=usage,
-        version="%prog " + __version__,
-        description="""\
-
-%prog opens urls
-""",
-    )
-    # {{{ options
-    parser.add_option("-g", "--go", action="store_true", default=False, help="run")
-    parser.add_option(
-        "-v", "--verbose", action="store_true", default=False, help="verbose"
-    )
-    parser.add_option(
-        "-t", "--test", action="store_true", default=False, help="run doctests"
-    )
-    # end of options }}}
-
-    return parser.parse_args(argv)
-
-
-def get_date_argument(a_date):
-    """Returns a_date in oracle date format"""
-    result = bv_date.oracle_date(a_date)
-    return result
-
+@app.command()
+def open_urls_command(
+    action: str = typer.Argument(DEFAULT_ACTION[0], help="Action to perform (e.g. 'morning', 'gain', 'trade')"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose output"),
+    test: bool = typer.Option(False, "--test", "-t", help="Run doctests")
+):
+    """Opens URLs based on the specified action."""
+    if test:
+        _test()
+    else:
+        process_command(action, verbose)
 
 def _test():
     """Runs all tests"""
@@ -433,28 +395,11 @@ def _test():
     )
     doctest.master.summarize(True)
 
+def main():
+    app()
 
-def main(argv=None):
-    global options
-    global args
-
-    options, args = get_options(argv)
-
-    if not options.test:
-        options.go = True
-
-    if options.test or (options.go is False):
-        _test()
-    else:
-        zd.output_to_stdout = options.verbose
-        if zd.output_to_stdout:
-            aspect.set_brief(False)
-
-        if options.go:
-            go(options, args)
-
-
-# aspect.wrap_module(__name__)
+# Create the Typer app
+app = typer.Typer(help="Open URLs from configuration")
 
 if __name__ == "__main__":
     main()
