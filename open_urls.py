@@ -285,11 +285,11 @@ def open_re_urls(urls, re_urls):
     open_url(PRICE_FILE)
 
 
-def open_urls(urls):
+def open_urls(urls, reverse=False):
     """Returns None"""
     global PAUSE_SECONDS, PAUSE_INTERVAL, SEND_BLOOMBERG_MAIL
     url_keys = list(urls.keys())
-    url_keys.sort()
+    url_keys.sort(reverse=reverse)
     url_values = []
     timer = bv_time.Timer()
     b = bv_bloomberg.BloombergUpdate()
@@ -351,17 +351,17 @@ def show_available_items(section):
     bv_time.print_message(items, with_time_stamp=False, starred=False)
 
 @bv_time.print_timing
-def process_command(action: str, verbose: bool = False):
+def process_command(action: str, verbose: bool = False, reverse: bool = False):
     """Process the command and open URLs"""
     zd.output_to_stdout = verbose
     robot = bv_speak.Robot()
 
     if action == MORNING:
         urls = get_morning_urls()
-        open_urls(urls)
+        open_urls(urls, reverse=reverse)
     else:
         urls = get_urls(action)
-        open_urls(urls)
+        open_urls(urls, reverse=reverse)
 
     if urls:
         message = "Opened {0} links".format(len(urls))
@@ -377,13 +377,14 @@ def process_command(action: str, verbose: bool = False):
 def open_urls_command(
     action: str = typer.Argument(DEFAULT_ACTION[0], help="Action to perform (e.g. 'morning', 'gain', 'trade')"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose output"),
-    test: bool = typer.Option(False, "--test", "-t", help="Run doctests")
+    test: bool = typer.Option(False, "--test", "-t", help="Run doctests"),
+    reverse: bool = typer.Option(False, "--reverse", "-r", help="Open URLs in reverse sort order")
 ):
     """Opens URLs based on the specified action."""
     if test:
         _test()
     else:
-        process_command(action, verbose)
+        process_command(action, verbose, reverse)
 
 def _test():
     """Runs all tests"""
