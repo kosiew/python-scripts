@@ -22,6 +22,10 @@ import webbrowser
 # Replace optparse with typer
 import typer
 from typing import List, Optional
+import os
+
+# Create the Typer app
+app = typer.Typer(help="Open URLs from configuration")
 
 # import aspect
 import bv_beautiful_soup
@@ -32,7 +36,6 @@ import bv_speak
 import bv_time
 import u
 import zd
-import os
 
 PAUSE_INTERVAL = 100
 PAUSE_SECONDS = 10
@@ -75,7 +78,7 @@ ITEM_RE_PATTERNS = "re_patterns"
 SECTION_BS_PATTERNS = "bs_patterns"
 ITEM_BS_PATTERNS = "bs_patterns"
 
-DEFAULT_ACTION = [MORNING]
+DEFAULT_ACTION = "morning"  # Changed from list to string to work better with Typer
 PALM = ITEM_PALM
 
 PALM_URLS = cf.get(SECTION_URLS, ITEM_PALM, return_eval=True)
@@ -379,9 +382,23 @@ def process_command(action: str, verbose: bool = False, reverse: bool = False):
         bv_time.print_message(message, with_time_stamp=True, starred=True)
         show_available_items(SECTION_URLS)
 
+@app.callback(invoke_without_command=True)
+def callback(
+    ctx: typer.Context,
+    version: bool = typer.Option(False, "--version", help="Show version and exit")
+):
+    """Open URLs from configuration file."""
+    if version:
+        typer.echo(f"open_urls version {__version__}")
+        raise typer.Exit()
+    
+    # If no command is provided, run the default command
+    if ctx.invoked_subcommand is None:
+        ctx.invoke(open_urls_command)
+
 @app.command()
 def open_urls_command(
-    action: str = typer.Argument(DEFAULT_ACTION[0], help="Action to perform (e.g. 'morning', 'gain', 'trade')"),
+    action: str = typer.Argument(DEFAULT_ACTION, help="Action to perform (e.g. 'morning', 'gain', 'trade')"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose output"),
     test: bool = typer.Option(False, "--test", "-t", help="Run doctests"),
     reverse: bool = typer.Option(False, "--reverse", "-r", help="Open URLs in reverse sort order"),
@@ -406,10 +423,9 @@ def _test():
     doctest.master.summarize(True)
 
 def main():
+    # Use Typer directly without any optparse code
     app()
 
-# Create the Typer app
-app = typer.Typer(help="Open URLs from configuration")
 
 if __name__ == "__main__":
     main()
