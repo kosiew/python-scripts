@@ -336,9 +336,22 @@ def open_urls(urls, reverse=False):
 
 
 def open_url(url):
-    """Returns None"""
+    """Returns None. Opens URL in Google Chrome."""
     url = url.strip()
-    return webbrowser.open(url)
+    try:
+        # For macOS
+        chrome = webbrowser.get('chrome')
+        return chrome.open_new_tab(url)
+    except webbrowser.Error:
+        # If Chrome isn't found as a registered browser, register it
+        if os.path.exists('/Applications/Google Chrome.app'):
+            chrome_path = 'open -a "Google Chrome" %s'
+            webbrowser.register('chrome', None, webbrowser.BackgroundBrowser(chrome_path))
+            chrome = webbrowser.get('chrome')
+            return chrome.open_new_tab(url)
+        else:
+            # Fall back to default browser if Chrome isn't installed
+            return webbrowser.open(url)
 
 
 def open_morning_urls():
