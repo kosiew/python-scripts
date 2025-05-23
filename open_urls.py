@@ -19,13 +19,7 @@ __license__ = "Python"
 import datetime
 import re
 import webbrowser
-# Replace optparse with typer
-import typer
-from typing import List, Optional
-import os
-
-# Create the Typer app
-app = typer.Typer(help="Open URLs from configuration")
+from optparse import OptionParser
 
 # import aspect
 import bv_beautiful_soup
@@ -36,6 +30,7 @@ import bv_speak
 import bv_time
 import u
 import zd
+import os
 
 PAUSE_INTERVAL = 100
 PAUSE_SECONDS = 10
@@ -64,6 +59,16 @@ ITEM_SEND_BLOOMBERG_MAIL = "send_bloomberg_mail"
 
 MORNING = ITEM_MORNING
 
+# ITEMS = (
+#   ITEM_MORNING,
+#   ITEM_PALM,
+#   ITEM_EXCHANGE_RATES,
+#   ITEM_DUAL_CURRENCY_INVESTMENT_RATES,
+#   ITEM_GOOGLE_ADSENSE,
+#   ITEM_FUNDS,
+#   ITEM_GOLD,
+#   ITEM_NEWFIELD,
+# )
 ITEMS = []
 
 RE_URL_KEY_PATTERN = "(?P<index>\d{2})re (?P<name>\S{2,})"
@@ -78,7 +83,11 @@ ITEM_RE_PATTERNS = "re_patterns"
 SECTION_BS_PATTERNS = "bs_patterns"
 ITEM_BS_PATTERNS = "bs_patterns"
 
-DEFAULT_ACTION = "morning"  # Changed from list to string to work better with Typer
+parser = False
+options = False
+args = False
+
+DEFAULT_ACTION = [MORNING]
 PALM = ITEM_PALM
 
 PALM_URLS = cf.get(SECTION_URLS, ITEM_PALM, return_eval=True)
@@ -102,6 +111,8 @@ get_keyprefix.counter = 0
 
 def get_soup(url):
     """ """
+    #     r = requests.get(url)
+    #     result = BeautifulSoup(r.content, PARSER)
     result = bv_beautiful_soup.Soup(url)
     return result
 
@@ -227,6 +238,7 @@ def get_weekday_urls():
 
 def get_morning_urls():
     morning_urls = get_urls(ITEM_MORNING)
+    # morning_urls['05 the sun'] = get_thesun_url()
 
     items = [item for item in ITEMS if item != ITEM_MORNING]
     morning_urls = update_with_items_urls(morning_urls, items)
@@ -288,11 +300,11 @@ def open_re_urls(urls, re_urls):
     open_url(PRICE_FILE)
 
 
-def open_urls(urls, reverse=False):
+def open_urls(urls):
     """Returns None"""
     global PAUSE_SECONDS, PAUSE_INTERVAL, SEND_BLOOMBERG_MAIL
     url_keys = list(urls.keys())
-    url_keys.sort(reverse=reverse)
+    url_keys.sort()
     url_values = []
     timer = bv_time.Timer()
     b = bv_bloomberg.BloombergUpdate()
@@ -336,22 +348,24 @@ def open_urls(urls, reverse=False):
 
 
 def open_url(url):
-    """Returns None. Opens URL in Google Chrome."""
+    """Returns None"""
     url = url.strip()
+    # Use Chrome browser to open URLs directly via the macOS 'open' command
+    if url.startswith("file://"):
+        # If it's a local file, remove the file:// prefix
+        file_path = url[7:]
+        cmd = f'open -a "Google Chrome" "{file_path}"'
+    else:
+        cmd = f'open -a "Google Chrome" "{url}"'
+    
     try:
-        # For macOS
-        chrome = webbrowser.get('chrome')
-        return chrome.open_new_tab(url)
-    except webbrowser.Error:
-        # If Chrome isn't found as a registered browser, register it
-        if os.path.exists('/Applications/Google Chrome.app'):
-            chrome_path = 'open -a "Google Chrome" %s'
-            webbrowser.register('chrome', None, webbrowser.BackgroundBrowser(chrome_path))
-            chrome = webbrowser.get('chrome')
-            return chrome.open_new_tab(url)
-        else:
-            # Fall back to default browser if Chrome isn't installed
-            return webbrowser.open(url)
+        import subprocess
+        subprocess.Popen(cmd, shell=True)
+        return True
+    except Exception as e:
+        print(f"Error opening Chrome: {e}")
+        # Fallback to default browser if Chrome is not available
+        return webbrowser.open(url)
 
 
 def open_morning_urls():
@@ -366,64 +380,63 @@ def show_available_items(section):
     bv_time.print_message("Available items", with_time_stamp=True, starred=True)
     bv_time.print_message(items, with_time_stamp=False, starred=False)
 
-def list_available_actions():
-    """Lists all available actions from configuration"""
-    bv_time.print_message("Available actions:", with_time_stamp=True, starred=True)
-    show_available_items(SECTION_URLS)
-    return
-
 @bv_time.print_timing
-def process_command(action: str, verbose: bool = False, reverse: bool = False):
-    """Process the command and open URLs"""
-    zd.output_to_stdout = verbose
+def go(options=None, args=None):
     robot = bv_speak.Robot()
+    if len(args) == 0:
+        args = DEFAULT_ACTION
 
-    if action == MORNING:
+    arg1 = args[0]
+
+    if arg1 == MORNING:
         urls = get_morning_urls()
-        open_urls(urls, reverse=reverse)
+        open_urls(urls)
     else:
-        urls = get_urls(action)
-        open_urls(urls, reverse=reverse)
+        urls = get_urls(arg1)
+        open_urls(urls)
 
     if urls:
         message = "Opened {0} links".format(len(urls))
         robot.say(message)
         bv_time.print_message(message, with_time_stamp=True, starred=True)
     else:
-        message = f"No links to open for {action}"
+        message = f"No links to open for {arg1}"
         robot.say(message)
         bv_time.print_message(message, with_time_stamp=True, starred=True)
         show_available_items(SECTION_URLS)
 
-@app.callback(invoke_without_command=True)
-def callback(
-    ctx: typer.Context,
-    version: bool = typer.Option(False, "--version", help="Show version and exit")
-):
-    """Open URLs from configuration file."""
-    if version:
-        typer.echo(f"open_urls version {__version__}")
-        raise typer.Exit()
-    
-    # If no command is provided, run the default command
-    if ctx.invoked_subcommand is None:
-        ctx.invoke(open_urls_command)
 
-@app.command()
-def open_urls_command(
-    action: str = typer.Argument(DEFAULT_ACTION, help="Action to perform (e.g. 'morning', 'gain', 'trade')"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose output"),
-    test: bool = typer.Option(False, "--test", "-t", help="Run doctests"),
-    reverse: bool = typer.Option(False, "--reverse", "-r", help="Open URLs in reverse sort order"),
-    list_actions: bool = typer.Option(False, "--list", "-l", help="List available actions and exit")
-):
-    """Opens URLs based on the specified action."""
-    if list_actions:
-        list_available_actions()
-    elif test:
-        _test()
-    else:
-        process_command(action, verbose, reverse)
+def get_options(argv):
+    """Returns None"""
+    global parser
+
+    usage = "usage: %prog [options] morning|gain|trade <stock_code1, stock_code2>"
+    parser = OptionParser(
+        usage=usage,
+        version="%prog " + __version__,
+        description="""\
+
+%prog opens urls
+""",
+    )
+    # {{{ options
+    parser.add_option("-g", "--go", action="store_true", default=False, help="run")
+    parser.add_option(
+        "-v", "--verbose", action="store_true", default=False, help="verbose"
+    )
+    parser.add_option(
+        "-t", "--test", action="store_true", default=False, help="run doctests"
+    )
+    # end of options }}}
+
+    return parser.parse_args(argv)
+
+
+def get_date_argument(a_date):
+    """Returns a_date in oracle date format"""
+    result = bv_date.oracle_date(a_date)
+    return result
+
 
 def _test():
     """Runs all tests"""
@@ -435,10 +448,28 @@ def _test():
     )
     doctest.master.summarize(True)
 
-def main():
-    # Use Typer directly without any optparse code
-    app()
 
+def main(argv=None):
+    global options
+    global args
+
+    options, args = get_options(argv)
+
+    if not options.test:
+        options.go = True
+
+    if options.test or (options.go is False):
+        _test()
+    else:
+        zd.output_to_stdout = options.verbose
+        if zd.output_to_stdout:
+            aspect.set_brief(False)
+
+        if options.go:
+            go(options, args)
+
+
+# aspect.wrap_module(__name__)
 
 if __name__ == "__main__":
     main()
