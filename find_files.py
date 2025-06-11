@@ -370,9 +370,10 @@ def execute_touch_operations(items_to_touch: List[Path], date_time: Optional[str
     typer.echo(f"\n🔄 Processing {total_items} items...")
     
     for item in items_to_touch:
+        cmd = None
         try:
             cmd = build_touch_command(date_time, access_time, modification_time, str(item))
-            subprocess.run(cmd, check=True, capture_output=True)
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
             success_count += 1
             
             # Show progress every 100 files or for small operations
@@ -382,10 +383,22 @@ def execute_touch_operations(items_to_touch: List[Path], date_time: Optional[str
                 typer.echo(f"✅ Timestamps updated: {item}")
                 
         except subprocess.CalledProcessError as e:
-            typer.echo(f"❌ Error touching {item}: {e}", err=True)
+            # Capture detailed error information
+            stderr_output = e.stderr.strip() if e.stderr else "No error details available"
+            stdout_output = e.stdout.strip() if e.stdout else ""
+            
+            typer.echo(f"❌ Error touching {item}:", err=True)
+            typer.echo(f"   Command: {' '.join(cmd) if cmd else 'Command not available'}", err=True)
+            typer.echo(f"   Exit code: {e.returncode}", err=True)
+            if stderr_output:
+                typer.echo(f"   Error output: {stderr_output}", err=True)
+            if stdout_output:
+                typer.echo(f"   Standard output: {stdout_output}", err=True)
+            
             error_count += 1
         except Exception as e:
             typer.echo(f"❌ Unexpected error with {item}: {e}", err=True)
+            typer.echo(f"   Command attempted: {' '.join(cmd) if cmd else 'Command not built'}", err=True)
             error_count += 1
     
     return success_count, error_count
