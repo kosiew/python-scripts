@@ -343,7 +343,14 @@ def build_touch_command(date_time: Optional[str], access_time: bool, modificatio
     if modification_time:
         cmd.append("-m")
     if date_time:
-        cmd.extend(["-t", date_time.replace('.', '')])
+        # Format for touch: [[CC]YY]MMDDhhmm[.SS]
+        # If there are seconds, keep the dot; if not, just use the date part
+        if '.' in date_time:
+            # Keep the original format with dot for seconds
+            cmd.extend(["-t", date_time])
+        else:
+            # No seconds, use as-is
+            cmd.extend(["-t", date_time])
     
     cmd.append(file_path)
     return cmd
