@@ -51,9 +51,10 @@ def search_files(search_term: str, folders: List[str], extensions: List[str]) ->
     for folder in folders:
         folder_path = Path(folder)
         if not folder_path.exists():
+            typer.echo(f"⚠️  Skipping (not found): {folder}", err=True)
             continue
             
-        typer.echo(f"Searching in: {folder}")
+        typer.echo(f"🔍 Searching in: {folder}")
         
         try:
             # Walk through all subdirectories
