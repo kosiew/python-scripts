@@ -492,6 +492,13 @@ def find_matching_movie_folder(subtitle_name: str, movie_folders: List[str]) -> 
         Path to matching movie folder or None if not found
     """
     subtitle_name_lower = subtitle_name.lower()
+    best_match = None
+    best_score = 0
+    
+    # Special handling for episode files - look at the source folder context
+    import re
+    episode_pattern = r's\d+e\d+'
+    is_episode = re.match(episode_pattern, subtitle_name_lower)
     
     for movie_folder in movie_folders:
         movie_folder_path = Path(movie_folder)
@@ -500,7 +507,25 @@ def find_matching_movie_folder(subtitle_name: str, movie_folders: List[str]) -> 
             
         try:
             for root, dirs, files in os.walk(movie_folder_path):
-                # Check for matching movie files in current directory
+                root_path = Path(root)
+                folder_name = root_path.name.lower()
+                
+                # For episode files, we need special logic
+                if is_episode:
+                    # Look for folders that might contain the show this episode belongs to
+                    # This requires checking the parent context or looking for similar naming
+                    episode_score = _calculate_episode_folder_match(subtitle_name_lower, folder_name, root_path)
+                    if episode_score > best_score:
+                        best_match = root_path
+                        best_score = episode_score
+                else:
+                    # Regular folder matching for movies
+                    folder_score = _calculate_folder_match_score(subtitle_name_lower, folder_name)
+                    if folder_score > best_score:
+                        best_match = root_path
+                        best_score = folder_score
+                
+                # Also check for matching movie files in current directory
                 for filename in files:
                     filename_lower = filename.lower()
                     file_stem = Path(filename).stem.lower()
@@ -508,15 +533,15 @@ def find_matching_movie_folder(subtitle_name: str, movie_folders: List[str]) -> 
                     # Check if it's a movie file and matches the subtitle name
                     for ext_pattern in MOVIE_EXTENSIONS:
                         if fnmatch.fnmatch(filename_lower, ext_pattern.lower()):
-                            # Simple matching: check if subtitle name is in movie name or vice versa
-                            if (subtitle_name_lower in file_stem or 
-                                file_stem in subtitle_name_lower or
-                                _fuzzy_match(subtitle_name_lower, file_stem)):
-                                return Path(root)
+                            file_score = _calculate_file_match_score(subtitle_name_lower, file_stem)
+                            if file_score > best_score:
+                                best_match = root_path
+                                best_score = file_score
         except (PermissionError, Exception):
             continue
     
-    return None
+    # Only return if we have a reasonable match (score > 0.3)
+    return best_match if best_score > 0.3 else None
 
 
 def _fuzzy_match(subtitle_name: str, movie_name: str, threshold: float = 0.7) -> bool:
@@ -559,6 +584,99 @@ def _fuzzy_match(subtitle_name: str, movie_name: str, threshold: float = 0.7) ->
     union = len(subtitle_words | movie_words)
     
     return (intersection / union) >= threshold if union > 0 else False
+
+
+def _calculate_folder_match_score(subtitle_name: str, folder_name: str) -> float:
+    """
+    Calculate match score between subtitle name and folder name.
+    
+    Args:
+        subtitle_name: Subtitle filename (lowercase, no extension)
+        folder_name: Folder name (lowercase)
+        
+    Returns:
+        Match score between 0.0 and 1.0
+    """
+    # Handle episode patterns like "S03E02" - these should match with show folders
+    import re
+    episode_pattern = r's\d+e\d+'
+    
+    if re.match(episode_pattern, subtitle_name):
+        # For episode files, try to extract show name from folder
+        # Look for common show name patterns
+        clean_folder = _clean_name_for_matching(folder_name)
+        clean_subtitle = _clean_name_for_matching(subtitle_name)
+        
+        # Check if folder contains show-like patterns and subtitle is episode
+        show_indicators = ['season', 'complete', 'series', 's01', 's02', 's03', 's04', 's05']
+        if any(indicator in clean_folder for indicator in show_indicators):
+            # Extract potential show name from folder
+            folder_words = set(clean_folder.split())
+            # For episode files, we need a different matching strategy
+            # Look for the parent context or use fuzzy matching with lower threshold
+            return 0.8  # High score for folders that look like show folders
+    
+    # Regular name matching
+    return _fuzzy_match(subtitle_name, folder_name, threshold=0.6)
+
+
+def _calculate_file_match_score(subtitle_name: str, movie_name: str) -> float:
+    """
+    Calculate match score between subtitle name and movie file name.
+    
+    Args:
+        subtitle_name: Subtitle filename (lowercase, no extension)
+        movie_name: Movie filename (lowercase, no extension)
+        
+    Returns:
+        Match score between 0.0 and 1.0
+    """
+    # Exact match gets highest score
+    if subtitle_name == movie_name:
+        return 1.0
+    
+    # Check for episode pattern matching
+    import re
+    episode_pattern = r's\d+e\d+'
+    
+    if re.match(episode_pattern, subtitle_name):
+        # For episode subtitles, look for matching episode pattern in movie file
+        subtitle_match = re.search(episode_pattern, subtitle_name)
+        movie_match = re.search(episode_pattern, movie_name)
+        if subtitle_match and movie_match:
+            subtitle_episode = subtitle_match.group()
+            movie_episode = movie_match.group()
+            if subtitle_episode == movie_episode:
+                return 0.9  # High score for matching episodes
+    
+    # Use fuzzy matching with higher threshold for files
+    return _fuzzy_match(subtitle_name, movie_name, threshold=0.7)
+
+
+def _clean_name_for_matching(name: str) -> str:
+    """
+    Clean name for better matching by removing common noise.
+    
+    Args:
+        name: Name to clean
+        
+    Returns:
+        Cleaned name
+    """
+    import re
+    # Replace common separators with spaces
+    name = name.replace('.', ' ').replace('_', ' ').replace('-', ' ')
+    # Remove year patterns like (2023) or [2023]
+    name = re.sub(r'[\(\[]?\d{4}[\)\]]?', '', name)
+    # Remove quality indicators
+    quality_patterns = [r'\b(720p|1080p|4k|hdtv|webrip|bluray|dvdrip|x264|x265|h264|h265)\b']
+    for pattern in quality_patterns:
+        name = re.sub(pattern, '', name, flags=re.IGNORECASE)
+    # Remove group names (usually at the end)
+    name = re.sub(r'\b[A-Z][a-zA-Z]*$', '', name)
+    # Clean up extra spaces
+    name = ' '.join(name.split())
+    return name.lower()
 
 
 def copy_subtitle_files(source_folders: List[str], target_folders: List[str], dry_run: bool = False) -> tuple[int, int, int]:
@@ -668,8 +786,8 @@ def copy_subtitles(
     typer.echo(f"📄 Looking for extensions: {', '.join(search_extensions)}")
     typer.echo()
     
-    # Copy subtitle files
-    copied_count, skipped_count, error_count = copy_subtitle_files(
+    # Copy subtitle files using enhanced matching
+    copied_count, skipped_count, error_count = copy_subtitle_files_with_context(
         source_folders, movie_folders, dry_run
     )
     
@@ -683,6 +801,193 @@ def copy_subtitles(
     typer.echo(f"   Skipped: {skipped_count} files")
     if error_count > 0:
         typer.echo(f"   Errors: {error_count} files")
+
+
+def _calculate_episode_folder_match(episode_name: str, folder_name: str, folder_path: Path) -> float:
+    """
+    Calculate match score for episode files against potential show folders.
+    
+    Args:
+        episode_name: Episode filename (like "s03e02")
+        folder_name: Folder name to check
+        folder_path: Full path to the folder for additional context
+        
+    Returns:
+        Match score between 0.0 and 1.0
+    """
+    import re
+    
+    # Extract season/episode info from episode name
+    episode_match = re.search(r's(\d+)e(\d+)', episode_name)
+    if not episode_match:
+        return 0.0
+    
+    season_num = episode_match.group(1)
+    
+    # Look for season indicators in folder name
+    folder_lower = folder_name.lower()
+    
+    # Check if folder contains matching season number
+    season_patterns = [
+        f'season.{season_num}',
+        f'season.0{season_num}',
+        f's{season_num}',
+        f's0{season_num}',
+        f'season{season_num}',
+        f'season.{int(season_num)}'  # Handle season numbers without leading zeros
+    ]
+    
+    for pattern in season_patterns:
+        if pattern in folder_lower:
+            # Found matching season, now check for show name similarity
+            # This is a strong indicator this is the right folder
+            return 0.95
+    
+    # Check if folder contains general season/series indicators
+    series_indicators = ['season', 'complete', 'series', 'episodes']
+    if any(indicator in folder_lower for indicator in series_indicators):
+        # This looks like a show folder, give it a moderate score
+        return 0.7
+    
+    return 0.0
+
+
+def copy_subtitle_files_with_context(source_folders: List[str], target_folders: List[str], dry_run: bool = False) -> tuple[int, int, int]:
+    """
+    Enhanced version that uses source folder context for better matching.
+    
+    Args:
+        source_folders: List of folders containing subtitle files
+        target_folders: List of movie folders to search for matches
+        dry_run: If True, only show what would be copied
+        
+    Returns:
+        Tuple of (copied_count, skipped_count, error_count)
+    """
+    copied_count = 0
+    skipped_count = 0
+    error_count = 0
+    
+    for source_folder in source_folders:
+        source_path = Path(source_folder)
+        if not source_path.exists():
+            typer.echo(f"⚠️  Source folder not found: {source_folder}", err=True)
+            continue
+            
+        typer.echo(f"🔍 Searching for subtitles in: {source_folder}")
+        
+        # Extract potential show/movie name from source folder
+        source_folder_name = source_path.name
+        
+        try:
+            # Find all subtitle files in source folder
+            for root, dirs, files in os.walk(source_path):
+                for filename in files:
+                    filename_lower = filename.lower()
+                    
+                    # Check if it's a subtitle file
+                    is_subtitle = any(fnmatch.fnmatch(filename_lower, ext.lower()) 
+                                    for ext in SUBTITLE_EXTENSIONS)
+                    
+                    if not is_subtitle:
+                        continue
+                    
+                    subtitle_path = Path(root) / filename
+                    subtitle_stem = subtitle_path.stem
+                    
+                    # Enhanced matching using source context
+                    matching_folder = find_matching_movie_folder_with_context(
+                        subtitle_stem, source_folder_name, target_folders
+                    )
+                    
+                    if matching_folder:
+                        target_path = matching_folder / filename
+                        
+                        if target_path.exists():
+                            typer.echo(f"⏭️  Skipping (already exists): {filename} -> {matching_folder}")
+                            skipped_count += 1
+                            continue
+                        
+                        if dry_run:
+                            typer.echo(f"📋 Would copy: {subtitle_path} -> {target_path}")
+                            copied_count += 1
+                        else:
+                            try:
+                                shutil.copy2(subtitle_path, target_path)
+                                typer.echo(f"✅ Copied: {filename} -> {matching_folder}")
+                                copied_count += 1
+                            except Exception as e:
+                                typer.echo(f"❌ Error copying {filename}: {e}", err=True)
+                                error_count += 1
+                    else:
+                        typer.echo(f"❓ No matching movie found for: {filename}")
+                        skipped_count += 1
+                        
+        except PermissionError:
+            typer.echo(f"Permission denied: {source_folder}", err=True)
+            error_count += 1
+        except Exception as e:
+            typer.echo(f"Error processing {source_folder}: {e}", err=True)
+            error_count += 1
+    
+    return copied_count, skipped_count, error_count
+
+
+def find_matching_movie_folder_with_context(subtitle_name: str, source_folder_name: str, movie_folders: List[str]) -> Optional[Path]:
+    """
+    Find matching movie folder using both subtitle name and source folder context.
+    
+    Args:
+        subtitle_name: Name of the subtitle file (without extension)
+        source_folder_name: Name of the source folder containing the subtitle
+        movie_folders: List of movie folder paths to search in
+        
+    Returns:
+        Path to matching movie folder or None if not found
+    """
+    import re
+    
+    # Clean the source folder name to extract show/movie name
+    clean_source = _clean_name_for_matching(source_folder_name)
+    
+    best_match = None
+    best_score = 0
+    
+    # Check if subtitle is an episode file
+    episode_pattern = r's\d+e\d+'
+    is_episode = re.match(episode_pattern, subtitle_name.lower())
+    
+    for movie_folder in movie_folders:
+        movie_folder_path = Path(movie_folder)
+        if not movie_folder_path.exists():
+            continue
+            
+        try:
+            for root, dirs, files in os.walk(movie_folder_path):
+                root_path = Path(root)
+                folder_name = root_path.name.lower()
+                clean_folder = _clean_name_for_matching(folder_name)
+                
+                # Calculate match score using source folder context
+                if is_episode:
+                    # For episodes, prioritize folders that match the source folder name
+                    context_score = _fuzzy_match(clean_source, clean_folder, threshold=0.4)
+                    episode_score = _calculate_episode_folder_match(subtitle_name.lower(), folder_name, root_path)
+                    # Combine both scores with higher weight on context
+                    total_score = (context_score * 0.7) + (episode_score * 0.3)
+                else:
+                    # For movies, use direct name matching
+                    total_score = _fuzzy_match(subtitle_name.lower(), clean_folder, threshold=0.5)
+                
+                if total_score > best_score:
+                    best_match = root_path
+                    best_score = total_score
+                    
+        except (PermissionError, Exception):
+            continue
+    
+    # Return match if score is reasonable
+    return best_match if best_score > 0.4 else None
 
 
 # ...existing code...
