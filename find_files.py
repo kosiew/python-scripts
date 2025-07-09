@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import List, Optional
 import fnmatch
 import subprocess
+import shutil
 from datetime import datetime
 
 app = typer.Typer(help="Find files in external drives")
@@ -33,6 +34,7 @@ DEFAULT_MOVIE_FOLDERS = [
 # File extensions to search for
 BOOK_EXTENSIONS = ['*.pdf', '*.epub', '*.mobi', '*.azw', '*.azw3', '*.djvu', '*.txt', '*.doc', '*.docx']
 MOVIE_EXTENSIONS = ['*.mp4', '*.mkv', '*.avi', '*.mov', '*.wmv', '*.flv', '*.webm', '*.m4v', '*.mpg', '*.mpeg']
+SUBTITLE_EXTENSIONS = ['*.srt', '*.sub', '*.idx', '*.ass', '*.ssa', '*.vtt']
 
 
 def search_files(search_term: str, folders: List[str], extensions: List[str]) -> List[Path]:
@@ -53,7 +55,7 @@ def search_files(search_term: str, folders: List[str], extensions: List[str]) ->
     for folder in folders:
         folder_path = Path(folder)
         if not folder_path.exists():
-            typer.echo(f"⚠️  Skipping (not found): {folder}", err=True)
+           
             continue
             
         typer.echo(f"🔍 Searching in: {folder}")
@@ -163,7 +165,7 @@ def list_folders():
 @app.command()
 def extensions():
     """
-    List supported file extensions for books and movies.
+    List supported file extensions for books, movies, and subtitles.
     """
     typer.echo("Supported Book Extensions:")
     typer.echo("=" * 30)
@@ -173,6 +175,11 @@ def extensions():
     typer.echo("\nSupported Movie Extensions:")
     typer.echo("=" * 30)
     for ext in MOVIE_EXTENSIONS:
+        typer.echo(f"  {ext}")
+    
+    typer.echo("\nSupported Subtitle Extensions:")
+    typer.echo("=" * 30)
+    for ext in SUBTITLE_EXTENSIONS:
         typer.echo(f"  {ext}")
 
 
@@ -473,5 +480,211 @@ def touch(
     display_touch_results(success_count, error_count)
 
 
+def find_matching_movie_folder(subtitle_name: str, movie_folders: List[str]) -> Optional[Path]:
+    """
+    Find a matching movie folder based on subtitle filename.
+    
+    Args:
+        subtitle_name: Name of the subtitle file (without extension)
+        movie_folders: List of movie folder paths to search in
+        
+    Returns:
+        Path to matching movie folder or None if not found
+    """
+    subtitle_name_lower = subtitle_name.lower()
+    
+    for movie_folder in movie_folders:
+        movie_folder_path = Path(movie_folder)
+        if not movie_folder_path.exists():
+            continue
+            
+        try:
+            for root, dirs, files in os.walk(movie_folder_path):
+                # Check for matching movie files in current directory
+                for filename in files:
+                    filename_lower = filename.lower()
+                    file_stem = Path(filename).stem.lower()
+                    
+                    # Check if it's a movie file and matches the subtitle name
+                    for ext_pattern in MOVIE_EXTENSIONS:
+                        if fnmatch.fnmatch(filename_lower, ext_pattern.lower()):
+                            # Simple matching: check if subtitle name is in movie name or vice versa
+                            if (subtitle_name_lower in file_stem or 
+                                file_stem in subtitle_name_lower or
+                                _fuzzy_match(subtitle_name_lower, file_stem)):
+                                return Path(root)
+        except (PermissionError, Exception):
+            continue
+    
+    return None
+
+
+def _fuzzy_match(subtitle_name: str, movie_name: str, threshold: float = 0.7) -> bool:
+    """
+    Perform fuzzy matching between subtitle and movie names.
+    
+    Args:
+        subtitle_name: Subtitle filename (lowercase, no extension)
+        movie_name: Movie filename (lowercase, no extension)
+        threshold: Similarity threshold (0.0 to 1.0)
+        
+    Returns:
+        True if names are similar enough
+    """
+    # Remove common words and characters that might differ
+    common_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'}
+    
+    def clean_name(name: str) -> str:
+        # Replace common separators with spaces
+        name = name.replace('.', ' ').replace('_', ' ').replace('-', ' ')
+        # Remove year patterns like (2023) or [2023]
+        import re
+        name = re.sub(r'[\(\[]?\d{4}[\)\]]?', '', name)
+        # Split into words and remove common words
+        words = [word for word in name.split() if word not in common_words and len(word) > 2]
+        return ' '.join(words)
+    
+    clean_subtitle = clean_name(subtitle_name)
+    clean_movie = clean_name(movie_name)
+    
+    # Simple word overlap check
+    subtitle_words = set(clean_subtitle.split())
+    movie_words = set(clean_movie.split())
+    
+    if not subtitle_words or not movie_words:
+        return False
+    
+    # Calculate Jaccard similarity
+    intersection = len(subtitle_words & movie_words)
+    union = len(subtitle_words | movie_words)
+    
+    return (intersection / union) >= threshold if union > 0 else False
+
+
+def copy_subtitle_files(source_folders: List[str], target_folders: List[str], dry_run: bool = False) -> tuple[int, int, int]:
+    """
+    Copy subtitle files from source folders to matching movie folders.
+    
+    Args:
+        source_folders: List of folders containing subtitle files
+        target_folders: List of movie folders to search for matches
+        dry_run: If True, only show what would be copied
+        
+    Returns:
+        Tuple of (copied_count, skipped_count, error_count)
+    """
+    copied_count = 0
+    skipped_count = 0
+    error_count = 0
+    
+    for source_folder in source_folders:
+        source_path = Path(source_folder)
+        if not source_path.exists():
+            typer.echo(f"⚠️  Source folder not found: {source_folder}", err=True)
+            continue
+            
+        typer.echo(f"🔍 Searching for subtitles in: {source_folder}")
+        
+        try:
+            # Find all subtitle files in source folder
+            for root, dirs, files in os.walk(source_path):
+                for filename in files:
+                    filename_lower = filename.lower()
+                    
+                    # Check if it's a subtitle file
+                    is_subtitle = any(fnmatch.fnmatch(filename_lower, ext.lower()) 
+                                    for ext in SUBTITLE_EXTENSIONS)
+                    
+                    if not is_subtitle:
+                        continue
+                    
+                    subtitle_path = Path(root) / filename
+                    subtitle_stem = subtitle_path.stem
+                    
+                    # Find matching movie folder
+                    matching_folder = find_matching_movie_folder(subtitle_stem, target_folders)
+                    
+                    if matching_folder:
+                        target_path = matching_folder / filename
+                        
+                        if target_path.exists():
+                            typer.echo(f"⏭️  Skipping (already exists): {filename} -> {matching_folder}")
+                            skipped_count += 1
+                            continue
+                        
+                        if dry_run:
+                            typer.echo(f"📋 Would copy: {subtitle_path} -> {target_path}")
+                            copied_count += 1
+                        else:
+                            try:
+                                shutil.copy2(subtitle_path, target_path)
+                                typer.echo(f"✅ Copied: {filename} -> {matching_folder}")
+                                copied_count += 1
+                            except Exception as e:
+                                typer.echo(f"❌ Error copying {filename}: {e}", err=True)
+                                error_count += 1
+                    else:
+                        typer.echo(f"❓ No matching movie found for: {filename}")
+                        skipped_count += 1
+                        
+        except PermissionError:
+            typer.echo(f"Permission denied: {source_folder}", err=True)
+            error_count += 1
+        except Exception as e:
+            typer.echo(f"Error processing {source_folder}: {e}", err=True)
+            error_count += 1
+    
+    return copied_count, skipped_count, error_count
+
+
+@app.command()
+def copy_subtitles(
+    source_folders: List[str] = typer.Argument(..., help="Source folders containing subtitle files"),
+    target_folders: Optional[List[str]] = typer.Option(None, "--target", "-t", help="Target movie folders (defaults to DEFAULT_MOVIE_FOLDERS)"),
+    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would be copied without actually copying"),
+    extensions: Optional[List[str]] = typer.Option(None, "--ext", help="Additional subtitle extensions to include")
+):
+    """
+    Copy subtitle files from source folders to matching movie folders.
+    
+    Searches for .srt and other subtitle files in the specified source folders,
+    then attempts to find matching movie folders in the target directories
+    and copies the subtitle files there.
+    """
+    # Use default movie folders if none specified
+    movie_folders = target_folders if target_folders else DEFAULT_MOVIE_FOLDERS.copy()
+    
+    # Add additional extensions if specified
+    search_extensions = SUBTITLE_EXTENSIONS.copy()
+    if extensions:
+        search_extensions.extend([f"*.{ext.lstrip('*.')}" for ext in extensions])
+    
+    typer.echo(f"🎬 Copying subtitles from {len(source_folders)} source folder(s)")
+    typer.echo(f"🎯 Searching in {len(movie_folders)} movie folder(s)")
+    
+    if dry_run:
+        typer.echo("🔍 DRY RUN MODE - No files will be copied")
+    
+    typer.echo(f"📄 Looking for extensions: {', '.join(search_extensions)}")
+    typer.echo()
+    
+    # Copy subtitle files
+    copied_count, skipped_count, error_count = copy_subtitle_files(
+        source_folders, movie_folders, dry_run
+    )
+    
+    # Display results
+    typer.echo("\n" + "=" * 60)
+    typer.echo("📊 Copy Summary:")
+    if dry_run:
+        typer.echo(f"   Would copy: {copied_count} subtitle files")
+    else:
+        typer.echo(f"   Copied: {copied_count} subtitle files")
+    typer.echo(f"   Skipped: {skipped_count} files")
+    if error_count > 0:
+        typer.echo(f"   Errors: {error_count} files")
+
+
+# ...existing code...
 if __name__ == "__main__":
     app()
