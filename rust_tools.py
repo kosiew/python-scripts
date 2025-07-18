@@ -192,33 +192,79 @@ def _find_integration_test_cmd(
     test_binaries = [f.stem for f in crate_tests_dir.glob('*.rs')]
     print(f"==> Available test binaries: {test_binaries}")
     
-    # Find which test binary contains the mod declaration for target_module
+# Check complete mod chain from test binary down to the final file
+    crate_tests_dir = crate_root / 'tests'
+    
+    # Build the complete path from tests directory
+    current_path = crate_tests_dir
+    path_parts = rel_path_parts
+    
+    if not path_parts:
+        # File is directly in tests/
+        test_binary = file_path.stem
+        test_file = crate_tests_dir / f"{test_binary}.rs"
+        if test_file.exists():
+            return f"cargo test {pkg_flag} --test {test_binary}"
+        else:
+            raise RuntimeError(f"{file_path} is not reachable.\nNo test binary found")
+    
+    # Step 1: Find test binary that contains the first module
+    first_module = path_parts[0]
+    test_binaries = [f.stem for f in crate_tests_dir.glob('*.rs')]
     test_binary = None
+    
     for test_file_stem in test_binaries:
         test_file_path = crate_tests_dir / f"{test_file_stem}.rs"
         if test_file_path.exists():
             content = test_file_path.read_text(encoding='utf-8')
-            if re.search(rf"mod\s+{target_module}\s*;", content):
-                print(f"==> Found mod declaration for {target_module} in {test_file_stem}.rs")
+            if re.search(rf"mod\s+{first_module}\s*;", content):
                 test_binary = test_file_stem
                 break
     
     if not test_binary:
-        # Find which test files are missing the declaration
-        missing_in = []
-        for test_file_stem in test_binaries:
-            test_file_path = crate_tests_dir / f"{test_file_stem}.rs"
-            if test_file_path.exists():
-                content = test_file_path.read_text(encoding='utf-8')
-                if not re.search(rf"mod\s+{target_module}\s*;", content):
-                    missing_in.append(test_file_stem)
-        
-        if missing_in:
-            msg = f"{file_path} is not reachable.\n{crate_tests_dir}/{missing_in[0]}.rs does not contain 'mod {target_module}'"
-        else:
-            msg = f"{file_path} is not reachable.\nNo test binary found that contains 'mod {target_module}'"
-        
+        msg = f"{file_path} is not reachable.\nNo test binary contains 'mod {first_module}'.\nTest binaries scanned: {', '.join(sorted(test_binaries))}"
         raise RuntimeError(msg)
+    
+    # Step 2: Check the complete chain
+    current_path = crate_tests_dir
+    print(f"==> DEBUG: Checking chain for path_parts: {path_parts}")
+    
+    for i, part in enumerate(path_parts):
+        print(f"==> DEBUG: Checking part {i}: '{part}'")
+        if i == 0:
+            # First level handled by test binary
+            current_path = current_path / part
+            print(f"==> DEBUG: First level, moving to: {current_path}")
+            continue
+            
+        # Check mod.rs in parent directory for this part
+        parent_mod_rs = current_path.parent / "mod.rs"
+        print(f"==> DEBUG: Checking {parent_mod_rs} for 'mod {part}'")
+        
+        if parent_mod_rs.exists():
+            content = parent_mod_rs.read_text(encoding='utf-8')
+            if re.search(rf"mod\s+{part}\s*;", content):
+                print(f"==> DEBUG: Found 'mod {part}' in {parent_mod_rs}")
+            else:
+                print(f"==> DEBUG: Missing 'mod {part}' in {parent_mod_rs}")
+                msg = f"{file_path} is not reachable.\n{parent_mod_rs} does not contain 'mod {part}'"
+                raise RuntimeError(msg)
+        else:
+            print(f"==> DEBUG: {parent_mod_rs} does not exist")
+        
+        # Move to next level
+        current_path = current_path / part
+        print(f"==> DEBUG: Moving to next level: {current_path}")
+    
+    # Step 3: Check final file declaration
+    parent_dir = current_path.parent
+    final_mod_rs = parent_dir / "mod.rs"
+    
+    if final_mod_rs.exists():
+        content = final_mod_rs.read_text(encoding='utf-8')
+        if not re.search(rf"mod\s+{file_path.stem}\s*;", content):
+            msg = f"{file_path} is not reachable.\n{final_mod_rs} does not contain 'mod {file_path.stem}'"
+            raise RuntimeError(msg)
     
     cmd = f"cargo test {pkg_flag} --test {test_binary}"
     print(f"==> Test command for integration test: {cmd}")
