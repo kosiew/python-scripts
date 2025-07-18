@@ -192,33 +192,30 @@ def _find_integration_test_cmd(
         mod_name = file_path.stem
         missing_mod = f"mod {mod_name};"
         
-        # Provide helpful debugging information about where the chain is broken
-        scanned_dirs = []
-        temp_scan_dir = file_path.parent
-        while temp_scan_dir.resolve() != crate_tests_dir.resolve():
-            scanned_dirs.append(temp_scan_dir)
-            temp_scan_dir = temp_scan_dir.parent
-        scanned_dirs.append(crate_tests_dir)
-        
-        scanned_files = []
-        for dir_path in scanned_dirs:
-            for rs_file in dir_path.glob('*.rs'):
-                scanned_files.append(rs_file)
-        
-        msg = (
-            f"The test file {file_path} is unreachable by mod declaration.\n"
-            f"Expected to find '{missing_mod}' in one of these files:\n"
-        )
-        
-        for rs_file in scanned_files:
-            msg += f"  - {rs_file}\n"
-        
+        # Find the exact break point in the chain
         if target_module:
-            msg += f"\nTo fix this, add '{missing_mod}' to the appropriate .rs file "
-            msg += f"(likely {crate_tests_dir}/main.rs or a parent module file)."
+            # Should have found mod declaration for target_module in parent of target_module directory
+            break_point = file_path.parent.parent  # Go up one more level to where mod declaration should be
+            expected_in = f"mod {target_module};"
         else:
-            msg += f"\nThe test file appears to be directly in the tests directory. "
-            msg += f"Consider creating a main.rs file in {crate_tests_dir} with '{missing_mod}'"
+            # File is directly in tests/, should have mod declaration for the file itself
+            break_point = crate_tests_dir
+            expected_in = missing_mod
+        
+        # Look for .rs files in the break point directory
+        rs_files = list(break_point.glob('*.rs'))
+        
+        msg = f"The test file {file_path} is unreachable by mod declaration.\n"
+        msg += f"Missing '{expected_in}' in {break_point}/"
+        
+        if rs_files:
+            if len(rs_files) == 1:
+                msg += f"{rs_files[0].name}"
+            else:
+                rs_names = [f.name for f in rs_files]
+                msg += f"[{', '.join(rs_names)}]"
+        else:
+            msg += "*.rs (no .rs files found)"
         
         print(f"==> ERROR: {msg}")
         typer.echo(f"❌ {msg}")
