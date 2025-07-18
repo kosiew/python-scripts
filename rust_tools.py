@@ -189,8 +189,14 @@ def _find_integration_test_cmd(
                 break
             scan_dir = scan_dir.parent
     if not test_binary:
-        print(f"==> No mod declaration found, using file stem: {file_path.stem}")
-        test_binary = file_path.stem
+        mod_name = file_path.stem
+        missing_mod = f"mod {mod_name};"
+        msg = (
+            f"==> ERROR: The test file {file_path} is unreachable by mod declaration.\n"
+        )
+        print(msg)
+        typer.echo(f"❌ {msg}")
+        raise typer.Exit(1)
     cmd = f"cargo test {pkg_flag} --test {test_binary}"
     print(f"==> Test command for integration test: {cmd}")
     return cmd
