@@ -225,46 +225,57 @@ def _find_integration_test_cmd(
         msg = f"{file_path} is not reachable.\nNo test binary contains 'mod {first_module}'.\nTest binaries scanned: {', '.join(sorted(test_binaries))}"
         raise RuntimeError(msg)
     
-    # Step 2: Check the complete chain
+# Step 2: Check the complete chain
     current_path = crate_tests_dir
     print(f"==> DEBUG: Checking chain for path_parts: {path_parts}")
     
+    # We need to check the mod chain starting from the test binary
+    # and then through each directory level
+    
+    # For the given structure, we should check:
+    # 1. Test binary contains 'mod memory_limit'
+    # 2. memory_limit/mod.rs contains 'mod memory_limit_validation'
+    # 3. memory_limit_validation/mod.rs contains 'mod sort_mem_validation'
+    
+    # Build the actual path to check
+    check_path = crate_tests_dir
     for i, part in enumerate(path_parts):
-        print(f"==> DEBUG: Checking part {i}: '{part}'")
         if i == 0:
-            # First level handled by test binary
-            current_path = current_path / part
-            print(f"==> DEBUG: First level, moving to: {current_path}")
+            # First part is handled by test binary
+            check_path = check_path / part
             continue
             
-        # Check mod.rs in parent directory for this part
-        parent_mod_rs = current_path.parent / "mod.rs"
-        print(f"==> DEBUG: Checking {parent_mod_rs} for 'mod {part}'")
+        # Check the mod.rs in the parent directory
+        mod_rs_path = check_path / "mod.rs"
+        print(f"==> DEBUG: Checking {mod_rs_path} for 'mod {part}'")
         
-        if parent_mod_rs.exists():
-            content = parent_mod_rs.read_text(encoding='utf-8')
+        if mod_rs_path.exists():
+            content = mod_rs_path.read_text(encoding='utf-8')
             if re.search(rf"mod\s+{part}\s*;", content):
-                print(f"==> DEBUG: Found 'mod {part}' in {parent_mod_rs}")
+                print(f"==> DEBUG: Found 'mod {part}' in {mod_rs_path}")
             else:
-                print(f"==> DEBUG: Missing 'mod {part}' in {parent_mod_rs}")
-                msg = f"{file_path} is not reachable.\n{parent_mod_rs} does not contain 'mod {part}'"
+                print(f"==> DEBUG: Missing 'mod {part}' in {mod_rs_path}")
+                msg = f"{file_path} is not reachable.\n{mod_rs_path} does not contain 'mod {part}'"
                 raise RuntimeError(msg)
         else:
-            print(f"==> DEBUG: {parent_mod_rs} does not exist")
+            print(f"==> DEBUG: {mod_rs_path} does not exist")
         
-        # Move to next level
-        current_path = current_path / part
-        print(f"==> DEBUG: Moving to next level: {current_path}")
+        check_path = check_path / part
     
-    # Step 3: Check final file declaration
-    parent_dir = current_path.parent
-    final_mod_rs = parent_dir / "mod.rs"
+    # Final check - the actual file
+    final_mod_rs = check_path.parent / "mod.rs"
+    print(f"==> DEBUG: Checking final file: {final_mod_rs}")
     
     if final_mod_rs.exists():
         content = final_mod_rs.read_text(encoding='utf-8')
-        if not re.search(rf"mod\s+{file_path.stem}\s*;", content):
+        if re.search(rf"mod\s+{file_path.stem}\s*;", content):
+            print(f"==> DEBUG: Found 'mod {file_path.stem}' in {final_mod_rs}")
+        else:
+            print(f"==> DEBUG: Missing 'mod {file_path.stem}' in {final_mod_rs}")
             msg = f"{file_path} is not reachable.\n{final_mod_rs} does not contain 'mod {file_path.stem}'"
             raise RuntimeError(msg)
+    else:
+        print(f"==> DEBUG: Final mod.rs {final_mod_rs} does not exist")
     
     cmd = f"cargo test {pkg_flag} --test {test_binary}"
     print(f"==> Test command for integration test: {cmd}")
