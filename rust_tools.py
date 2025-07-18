@@ -167,155 +167,59 @@ def _find_integration_test_cmd(
 ) -> str:
     idx = parts.index('tests')
     print(f"==> 'tests' found at index {idx} in path parts")
-    target_module = parts[idx + 1] if len(parts) > idx + 1 else None
-    print(f"==> Target module: {target_module}")
-    test_binary = None
+    
+    # Get the relative path from tests directory
+    rel_path_parts = parts[idx + 1:]  # Everything after 'tests'
+    print(f"==> Relative path parts: {rel_path_parts}")
+    
     crate_tests_dir = crate_root / 'tests'
     print(f"==> Crate tests dir: {crate_tests_dir}")
-    scan_dir = file_path.parent
-    print(f"==> Initial scan_dir: {scan_dir}")
-    if target_module:
-        # First check if there's a mod.rs in the same directory that should declare this file
-        mod_rs_path = file_path.parent / "mod.rs"
-        found_in_mod_rs = False
-        
-        if mod_rs_path.exists():
-            print(f"==> Checking mod.rs in same directory: {mod_rs_path}")
-            content = mod_rs_path.read_text(encoding='utf-8')
-            file_stem = file_path.stem
-            if re.search(rf"mod\s+{file_stem}\s*;", content):
-                print(f"==> Found mod declaration for {file_stem} in {mod_rs_path}")
-                found_in_mod_rs = True
-                # Get the parent directory name as the test binary
-                test_binary = file_path.parent.name
-                print(f"==> Test binary from parent dir: {test_binary}")
-            else:
-                print(f"==> mod.rs exists but does not contain 'mod {file_stem};'")
-                # mod.rs exists but doesn't declare this file - this is an error
-                # Don't continue scanning, show error immediately
-                pass
-        
-        # If mod.rs exists but doesn't declare the file, show error
-        if mod_rs_path.exists() and not found_in_mod_rs:
-            test_binary = None  # Force error
-            print(f"==> Forcing error: mod.rs exists but missing 'mod {file_stem};'")
-            print(f"==> DEBUG: found_in_mod_rs={found_in_mod_rs}, will set test_binary=None")
-        # If no mod.rs, continue with original scanning logic
-        elif not mod_rs_path.exists():
-            print(f"==> No mod.rs found, continuing scan")
-            while True:
-                print(f"==> Scanning directory: {scan_dir}")
-                for rs in scan_dir.glob('*.rs'):
-                    print(f"==> Checking file: {rs}")
-                    content = rs.read_text(encoding='utf-8')
-                    if re.search(rf"mod\s+{target_module}\s*;", content):
-                        print(f"==> Found mod declaration for {target_module} in {rs}")
-                        test_binary = rs.stem
-                        break
-                if test_binary or scan_dir.resolve() == crate_tests_dir.resolve():
-                    print(f"==> Breaking scan loop: test_binary={test_binary}, scan_dir={scan_dir}")
-                    break
-                scan_dir = scan_dir.parent
-    print(f"==> Final test_binary value: {test_binary}")
+    
+    if not rel_path_parts:
+        # File is directly in tests/, use filename as binary
+        test_binary = file_path.stem
+        test_file = crate_tests_dir / f"{test_binary}.rs"
+        if test_file.exists():
+            return f"cargo test {pkg_flag} --test {test_binary}"
+        else:
+            raise RuntimeError(f"{file_path} is not reachable.\nNo test binary found")
+    
+    # Get the target module (e.g., 'parquet')
+    target_module = rel_path_parts[0]
+    print(f"==> Target module: {target_module}")
+    
+    # Look for test binary files in the tests directory
+    test_binaries = [f.stem for f in crate_tests_dir.glob('*.rs')]
+    print(f"==> Available test binaries: {test_binaries}")
+    
+    # Find which test binary contains the mod declaration for target_module
+    test_binary = None
+    for test_file_stem in test_binaries:
+        test_file_path = crate_tests_dir / f"{test_file_stem}.rs"
+        if test_file_path.exists():
+            content = test_file_path.read_text(encoding='utf-8')
+            if re.search(rf"mod\s+{target_module}\s*;", content):
+                print(f"==> Found mod declaration for {target_module} in {test_file_stem}.rs")
+                test_binary = test_file_stem
+                break
+    
     if not test_binary:
-        mod_name = file_path.stem
+        # Find which test files are missing the declaration
+        missing_in = []
+        for test_file_stem in test_binaries:
+            test_file_path = crate_tests_dir / f"{test_file_stem}.rs"
+            if test_file_path.exists():
+                content = test_file_path.read_text(encoding='utf-8')
+                if not re.search(rf"mod\s+{target_module}\s*;", content):
+                    missing_in.append(test_file_stem)
         
-        # Build a detailed chain analysis
-        msg_parts = []
-        msg_parts.append(f"🎯 Test file: {file_path}")
-        msg_parts.append(f"📁 Parent directory: {file_path.parent}")
-        
-        # Check for mod.rs in parent directory
-        mod_rs_path = file_path.parent / "mod.rs"
-        if mod_rs_path.exists():
-            msg_parts.append(f"✅ Found mod.rs: {mod_rs_path}")
-            content = mod_rs_path.read_text(encoding='utf-8')
-            file_stem = file_path.stem
-            
-            # Check if this specific file is declared
-            pattern = rf"mod\s+{file_stem}\s*;"
-            if re.search(pattern, content):
-                msg_parts.append(f"✅ Found declaration: 'mod {file_stem};' in {mod_rs_path.name}")
-            else:
-                msg_parts.append(f"❌ MISSING: 'mod {file_stem};' in {mod_rs_path.name}")
-                msg_parts.append(f"   Expected declaration: mod {file_stem};")
-                msg_parts.append("")
-                msg_parts.append("🔍 Current mod.rs content:")
-                lines = content.split('\n')
-                for i, line in enumerate(lines, 1):
-                    if 'mod' in line and not line.strip().startswith('//'):
-                        msg_parts.append(f"   {i:3}: {line}")
+        if missing_in:
+            msg = f"{file_path} is not reachable.\n{crate_tests_dir}/{missing_in[0]}.rs does not contain 'mod {target_module}'"
         else:
-            msg_parts.append(f"❌ No mod.rs found in: {file_path.parent}")
-            
-            # Check parent directories for mod declarations
-            current_dir = file_path.parent
-            while current_dir != crate_tests_dir and current_dir != current_dir.parent:
-                parent = current_dir.parent
-                mod_rs_in_parent = parent / "mod.rs"
-                
-                if mod_rs_in_parent.exists():
-                    msg_parts.append(f"\n📁 Checking parent: {parent}")
-                    content = mod_rs_in_parent.read_text(encoding='utf-8')
-                    dir_name = current_dir.name
-                    
-                    if re.search(rf"mod\s+{dir_name}\s*;", content):
-                        msg_parts.append(f"✅ Found: mod {dir_name}; in {mod_rs_in_parent}")
-                    else:
-                        msg_parts.append(f"❌ MISSING: mod {dir_name}; in {mod_rs_in_parent}")
-                        break
-                else:
-                    msg_parts.append(f"❌ No mod.rs in parent: {parent}")
-                    
-                current_dir = parent
+            msg = f"{file_path} is not reachable.\nNo test binary found that contains 'mod {target_module}'"
         
-        # Show the complete mod chain that should exist
-        msg_parts.append("\n🔄 Expected mod chain:")
-        rel_path = file_path.relative_to(crate_tests_dir)
-        parts = list(rel_path.with_suffix('').parts)
-        
-        if len(parts) == 1:
-            # Direct file in tests/
-            expected_line = f"mod {parts[0]};"
-            msg_parts.append(f"   {crate_tests_dir}/mod.rs should contain: {expected_line}")
-        else:
-            # Nested structure
-            current_path = crate_tests_dir
-            for i, part in enumerate(parts):
-                if i == len(parts) - 1:
-                    # Last part is the file itself
-                    expected_line = f"mod {part};"
-                    msg_parts.append(f"   {current_path}/mod.rs should contain: {expected_line}")
-                else:
-                    # Intermediate directory
-                    expected_line = f"mod {part};"
-                    msg_parts.append(f"   {current_path}/mod.rs should contain: {expected_line}")
-                    current_path = current_path / part
-        
-        # List all .rs files in relevant directories for context
-        msg_parts.append(f"\n📋 Context:")
-        msg_parts.append(f"Crate tests directory: {crate_tests_dir}")
-        
-        # List files in the parent directory
-        parent_files = list(file_path.parent.glob('*.rs'))
-        if parent_files:
-            msg_parts.append(f"Files in {file_path.parent}:")
-            for f in sorted(parent_files):
-                marker = "👉 " if f == file_path else "   "
-                msg_parts.append(f"{marker}{f.name}")
-        
-        # List files in crate tests directory
-        if crate_tests_dir != file_path.parent:
-            tests_files = list(crate_tests_dir.glob('*.rs'))
-            if tests_files:
-                msg_parts.append(f"Files in {crate_tests_dir}:")
-                for f in sorted(tests_files):
-                    msg_parts.append(f"   {f.name}")
-        
-        msg = "\n".join(msg_parts)
-        print(f"==> ERROR: {msg}")
-        typer.echo(f"❌ {msg}")
-        raise typer.Exit(1)
+        raise RuntimeError(msg)
+    
     cmd = f"cargo test {pkg_flag} --test {test_binary}"
     print(f"==> Test command for integration test: {cmd}")
     return cmd
@@ -338,16 +242,56 @@ def craft_test(file_path: Path):
     It scans the entire `tests/` directory for `mod <module>;` declarations.
     """
     print(f"==> craft_test called with file_path: {file_path}")
-    ws, rel_to_ws = _get_workspace_and_relative_path(file_path)
-    crate_name, crate_root = _get_crate_info(file_path)
-    pkg_flag = f"-p {crate_name}"
-    parts = rel_to_ws.with_suffix('').parts
-    print(f"==> Path parts: {parts}")
-    if 'tests' in parts:
-        cmd = _find_integration_test_cmd(file_path, parts, crate_root, pkg_flag)
-    else:
-        cmd = _find_unit_test_cmd(file_path, crate_root, pkg_flag)
-    typer.echo(f"🔧 Test command: {cmd}")
+    try:
+        ws, rel_to_ws = _get_workspace_and_relative_path(file_path)
+        crate_name, crate_root = _get_crate_info(file_path)
+        pkg_flag = f"-p {crate_name}"
+        parts = rel_to_ws.with_suffix('').parts
+        print(f"==> Path parts: {parts}")
+        if 'tests' in parts:
+            cmd = _find_integration_test_cmd(file_path, parts, crate_root, pkg_flag)
+        else:
+            cmd = _find_unit_test_cmd(file_path, crate_root, pkg_flag)
+        typer.echo(f"🔧 Test command: {cmd}")
+    except ValueError as e:
+        if "not in the subpath" in str(e):
+            abs_file = file_path.resolve()
+            abs_crate = Path.cwd().resolve()
+            crate_rel = abs_file.relative_to(abs_crate) if abs_crate in abs_file.parents else None
+            
+            msg_parts = [
+                f"🎯 File: {file_path}",
+                f"📁 Absolute path: {abs_file}",
+                f"🏠 Current directory: {abs_crate}",
+            ]
+            
+            if crate_rel:
+                msg_parts.extend([
+                    f"📊 Relative to crate: {crate_rel}",
+                    "",
+                    "💡 To fix this, run the command from:",
+                    f"   cd {abs_crate}",
+                    f"   python rust_tools.py craft-test {crate_rel}"
+                ])
+            else:
+                msg_parts.extend([
+                    "",
+                    "❌ This file is outside the current workspace",
+                    "💡 Ensure you're in the correct directory or use absolute path"
+                ])
+            
+            typer.echo(f"❌ Path Error: {' '.join(msg_parts)}")
+            raise typer.Exit(1)
+        else:
+            typer.echo(f"❌ Error: {e}")
+            raise typer.Exit(1)
+    except RuntimeError as e:
+        # This catches the detailed mod chain errors from _find_integration_test_cmd
+        typer.echo(f"❌ {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        typer.echo(f"❌ Error: {e}")
+        raise typer.Exit(1)
 
 if __name__ == "__main__":
     app()
