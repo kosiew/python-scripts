@@ -175,28 +175,53 @@ def _find_integration_test_cmd(
     scan_dir = file_path.parent
     print(f"==> Initial scan_dir: {scan_dir}")
     if target_module:
-        while True:
-            print(f"==> Scanning directory: {scan_dir}")
-            for rs in scan_dir.glob('*.rs'):
-                print(f"==> Checking file: {rs}")
-                content = rs.read_text(encoding='utf-8')
-                if re.search(rf"mod\s+{target_module}\s*;", content):
-                    print(f"==> Found mod declaration for {target_module} in {rs}")
-                    test_binary = rs.stem
+        # First check if there's a mod.rs in the same directory that should declare this file
+        mod_rs_path = file_path.parent / "mod.rs"
+        if mod_rs_path.exists():
+            print(f"==> Checking mod.rs in same directory: {mod_rs_path}")
+            content = mod_rs_path.read_text(encoding='utf-8')
+            file_stem = file_path.stem
+            if re.search(rf"mod\s+{file_stem}\s*;", content):
+                print(f"==> Found mod declaration for {file_stem} in {mod_rs_path}")
+                test_binary = mod_rs_path.stem  # This will be "mod", but we need the parent dir name
+                # Get the parent directory name as the test binary
+                test_binary = file_path.parent.name
+                print(f"==> Test binary from parent dir: {test_binary}")
+        
+        # If not found in mod.rs, continue with original scanning logic
+        if not test_binary:
+            while True:
+                print(f"==> Scanning directory: {scan_dir}")
+                for rs in scan_dir.glob('*.rs'):
+                    print(f"==> Checking file: {rs}")
+                    content = rs.read_text(encoding='utf-8')
+                    if re.search(rf"mod\s+{target_module}\s*;", content):
+                        print(f"==> Found mod declaration for {target_module} in {rs}")
+                        test_binary = rs.stem
+                        break
+                if test_binary or scan_dir.resolve() == crate_tests_dir.resolve():
+                    print(f"==> Breaking scan loop: test_binary={test_binary}, scan_dir={scan_dir}")
                     break
-            if test_binary or scan_dir.resolve() == crate_tests_dir.resolve():
-                print(f"==> Breaking scan loop: test_binary={test_binary}, scan_dir={scan_dir}")
-                break
-            scan_dir = scan_dir.parent
+                scan_dir = scan_dir.parent
     if not test_binary:
         mod_name = file_path.stem
         missing_mod = f"mod {mod_name};"
         
         # Find the exact break point in the chain
         if target_module:
-            # Should have found mod declaration for target_module in parent of target_module directory
-            break_point = file_path.parent.parent  # Go up one more level to where mod declaration should be
-            expected_in = f"mod {target_module};"
+            # First check if there should be a mod.rs in the same directory as the test file
+            # that declares the test file itself
+            test_file_dir = file_path.parent
+            mod_rs_path = test_file_dir / "mod.rs"
+            
+            if mod_rs_path.exists():
+                # mod.rs exists, so it should declare this test file
+                break_point = test_file_dir
+                expected_in = missing_mod
+            else:
+                # No mod.rs, so parent directory should declare the target_module
+                break_point = test_file_dir.parent
+                expected_in = f"mod {target_module};"
         else:
             # File is directly in tests/, should have mod declaration for the file itself
             break_point = crate_tests_dir
