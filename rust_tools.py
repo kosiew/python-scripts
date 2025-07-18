@@ -9,6 +9,14 @@ import typer
 app = typer.Typer(help="CLI tool to find Rust imports and generate test commands for a given struct or file")
 
 
+DEBUG = False
+
+def debug_print(*args, **kwargs):
+    if DEBUG:
+        print(*args, **kwargs)
+
+
+
 def find_workspace_root(start_dir: Path) -> Path | None:
     current = start_dir.resolve()
     while current != current.parent:
@@ -101,7 +109,7 @@ def find_correct_import(root_dir: Path, struct_name: str, workspace_root: Path |
     statements: list[tuple[str, str]] = []
     for f in struct_files:
         crate, crate_root = find_containing_crate(f)
-        if not crate:
+        if not crate or not crate_root:
             continue
         rel = f.relative_to(crate_root)
         parts = [p for p in rel.with_suffix('').parts if p != 'src' and p != 'mod']
@@ -125,8 +133,12 @@ def find_rust_imports(struct_name: str):
     ws = find_workspace_root(cwd) or cwd
     typer.echo(f"📂 Workspace root: {ws}")
     crate, crate_root = find_containing_crate(cwd)
-    if crate:
-        typer.echo(f"🦀 Current crate: {crate} ({crate_root.relative_to(ws)})")
+    if crate and crate_root:
+        try:
+            rel_crate_root = crate_root.relative_to(ws)
+        except Exception:
+            rel_crate_root = crate_root
+        typer.echo(f"🦀 Current crate: {crate} ({rel_crate_root})")
     else:
         typer.echo("❌ Could not determine current crate")
     typer.echo(f"🔍 Searching for `{struct_name}`...\n")
@@ -140,14 +152,14 @@ def find_rust_imports(struct_name: str):
 def _get_workspace_and_relative_path(file_path: Path) -> tuple[Path, Path]:
     """Return workspace root and file path relative to workspace, or exit if not inside workspace."""
     cwd = Path(os.getcwd())
-    print(f"==> Current working directory: {cwd}")
+    debug_print(f"==> Current working directory: {cwd}")
     ws = find_workspace_root(cwd) or cwd
-    print(f"==> Workspace root: {ws}")
+    debug_print(f"==> Workspace root: {ws}")
     try:
         rel_to_ws = file_path.resolve().relative_to(ws)
-        print(f"==> File relative to workspace: {rel_to_ws}")
+        debug_print(f"==> File relative to workspace: {rel_to_ws}")
     except ValueError:
-        print(f"==> ERROR: The file {file_path} is not inside the workspace {ws}")
+        debug_print(f"==> ERROR: The file {file_path} is not inside the workspace {ws}")
         typer.echo("❌ The file is not inside the workspace")
         raise typer.Exit(1)
     return ws, rel_to_ws
@@ -155,9 +167,9 @@ def _get_workspace_and_relative_path(file_path: Path) -> tuple[Path, Path]:
 def _get_crate_info(file_path: Path) -> tuple[str, Path]:
     """Return crate name and crate root for a file, or exit if not found."""
     crate_name, crate_root = find_containing_crate(file_path)
-    print(f"==> Crate name: {crate_name}, crate root: {crate_root}")
+    debug_print(f"==> Crate name: {crate_name}, crate root: {crate_root}")
     if not crate_name or not crate_root:
-        print(f"==> ERROR: Could not determine crate for the file {file_path}")
+        debug_print(f"==> ERROR: Could not determine crate for the file {file_path}")
         typer.echo("❌ Could not determine crate for the file")
         raise typer.Exit(1)
     return crate_name, crate_root
@@ -166,14 +178,14 @@ def _find_integration_test_cmd(
     file_path: Path, parts: tuple, crate_root: Path, pkg_flag: str
 ) -> str:
     idx = parts.index('tests')
-    print(f"==> 'tests' found at index {idx} in path parts")
+    debug_print(f"==> 'tests' found at index {idx} in path parts")
     
     # Get the relative path from tests directory
     rel_path_parts = parts[idx + 1:]  # Everything after 'tests'
-    print(f"==> Relative path parts: {rel_path_parts}")
+    debug_print(f"==> Relative path parts: {rel_path_parts}")
     
     crate_tests_dir = crate_root / 'tests'
-    print(f"==> Crate tests dir: {crate_tests_dir}")
+    debug_print(f"==> Crate tests dir: {crate_tests_dir}")
     
     if not rel_path_parts:
         # File is directly in tests/, use filename as binary
@@ -186,11 +198,11 @@ def _find_integration_test_cmd(
     
     # Get the target module (e.g., 'parquet')
     target_module = rel_path_parts[0]
-    print(f"==> Target module: {target_module}")
+    debug_print(f"==> Target module: {target_module}")
     
     # Look for test binary files in the tests directory
     test_binaries = [f.stem for f in crate_tests_dir.glob('*.rs')]
-    print(f"==> Available test binaries: {test_binaries}")
+    debug_print(f"==> Available test binaries: {test_binaries}")
     
 # Check complete mod chain from test binary down to the final file
     crate_tests_dir = crate_root / 'tests'
@@ -232,7 +244,7 @@ def _find_integration_test_cmd(
     
 # Step 2: Check the complete chain
     current_path = crate_tests_dir
-    print(f"==> DEBUG: Checking chain for path_parts: {path_parts}")
+    debug_print(f"==> DEBUG: Checking chain for path_parts: {path_parts}")
     
     # We need to check the mod chain starting from the test binary
     # and then through each directory level
@@ -252,7 +264,7 @@ def _find_integration_test_cmd(
             
         # Check the mod.rs in the parent directory
         mod_rs_path = check_path / "mod.rs"
-        print(f"==> DEBUG: Checking {mod_rs_path} for 'mod {part}'")
+        debug_print(f"==> DEBUG: Checking {mod_rs_path} for 'mod {part}'")
         
         if mod_rs_path.exists():
             content = mod_rs_path.read_text(encoding='utf-8')
@@ -264,44 +276,51 @@ def _find_integration_test_cmd(
                     found_mod = True
                     break
             if found_mod:
-                print(f"==> DEBUG: Found 'mod {part}' in {mod_rs_path}")
+                debug_print(f"==> DEBUG: Found 'mod {part}' in {mod_rs_path}")
             else:
-                print(f"==> DEBUG: Missing 'mod {part}' in {mod_rs_path}")
+                debug_print(f"==> DEBUG: Missing 'mod {part}' in {mod_rs_path}")
                 msg = f"{file_path} is not reachable.\n{mod_rs_path} does not contain 'mod {part}'"
                 raise RuntimeError(msg)
         else:
-            print(f"==> DEBUG: {mod_rs_path} does not exist")
+            debug_print(f"==> DEBUG: {mod_rs_path} does not exist")
         
         check_path = check_path / part
     
     # Final check - the actual file
     final_mod_rs = check_path.parent / "mod.rs"
-    print(f"==> DEBUG: Checking final file: {final_mod_rs}")
+    debug_print(f"==> DEBUG: Checking final file: {final_mod_rs}")
     
     if final_mod_rs.exists():
         content = final_mod_rs.read_text(encoding='utf-8')
-        if re.search(rf"mod\s+{file_path.stem}\s*;", content):
-            print(f"==> DEBUG: Found 'mod {file_path.stem}' in {final_mod_rs}")
+        # Only match uncommented 'mod' or 'pub mod' statements, including pub (crate|super|in ...) mod
+        mod_pattern = rf"^\s*(pub(\s*\([^)]*\))?\s+)?mod\s+{file_path.stem}\s*;"
+        found_mod = False
+        for line in content.splitlines():
+            if re.match(mod_pattern, line):
+                found_mod = True
+                break
+        if found_mod:
+            debug_print(f"==> DEBUG: Found 'mod {file_path.stem}' in {final_mod_rs}")
         else:
-            print(f"==> DEBUG: Missing 'mod {file_path.stem}' in {final_mod_rs}")
+            debug_print(f"==> DEBUG: Missing 'mod {file_path.stem}' in {final_mod_rs}")
             msg = f"{file_path} is not reachable.\n{final_mod_rs} does not contain 'mod {file_path.stem}'"
             raise RuntimeError(msg)
     else:
-        print(f"==> DEBUG: Final mod.rs {final_mod_rs} does not exist")
+        debug_print(f"==> DEBUG: Final mod.rs {final_mod_rs} does not exist")
     
     cmd = f"cargo test {pkg_flag} --test {test_binary}"
-    print(f"==> Test command for integration test: {cmd}")
+    debug_print(f"==> Test command for integration test: {cmd}")
     return cmd
 
 def _find_unit_test_cmd(file_path: Path, crate_root: Path, pkg_flag: str) -> str:
     rel_crate = file_path.resolve().relative_to(crate_root)
-    print(f"==> File relative to crate root: {rel_crate}")
+    debug_print(f"==> File relative to crate root: {rel_crate}")
     parts2 = [p for p in rel_crate.with_suffix('').parts if p not in ('src', 'mod')]
-    print(f"==> Module path parts: {parts2}")
+    debug_print(f"==> Module path parts: {parts2}")
     module_path = '::'.join(parts2)
-    print(f"==> Module path: {module_path}")
+    debug_print(f"==> Module path: {module_path}")
     cmd = f"cargo test {pkg_flag} {module_path}" if module_path else f"cargo test {pkg_flag}"
-    print(f"==> Test command for unit test/example: {cmd}")
+    debug_print(f"==> Test command for unit test/example: {cmd}")
     return cmd
 
 @app.command()
@@ -310,7 +329,7 @@ def craft_test(file_path: Path):
     Craft a `cargo test -p <package> --test <testfile>` command to run tests in the specified Rust source file.
     It scans the entire `tests/` directory for `mod <module>;` declarations.
     """
-    print(f"==> craft_test called with file_path: {file_path}")
+    debug_print(f"==> craft_test called with file_path: {file_path}")
     try:
         ws, rel_to_ws = _get_workspace_and_relative_path(file_path)
         crate_name, crate_root = _get_crate_info(file_path)
