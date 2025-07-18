@@ -217,12 +217,17 @@ def _find_integration_test_cmd(
         test_file_path = crate_tests_dir / f"{test_file_stem}.rs"
         if test_file_path.exists():
             content = test_file_path.read_text(encoding='utf-8')
-            if re.search(rf"mod\s+{first_module}\s*;", content):
-                test_binary = test_file_stem
+            # Only match uncommented 'mod' or 'pub mod' statements, including pub (crate|super|in ...) mod
+            mod_pattern = rf"^\s*(pub(\s*\([^)]*\))?\s+)?mod\s+{first_module}\s*;"
+            for line in content.splitlines():
+                if re.match(mod_pattern, line):
+                    test_binary = test_file_stem
+                    break
+            if test_binary:
                 break
     
     if not test_binary:
-        msg = f"{file_path} is not reachable.\nNo test binary contains 'mod {first_module}'.\nTest binaries scanned: {', '.join(sorted(test_binaries))}"
+        msg = f"{file_path} is not reachable.\nNo file contains 'mod {first_module}'.\nFiles scanned: {', '.join(sorted(test_binaries))}"
         raise RuntimeError(msg)
     
 # Step 2: Check the complete chain
@@ -251,7 +256,14 @@ def _find_integration_test_cmd(
         
         if mod_rs_path.exists():
             content = mod_rs_path.read_text(encoding='utf-8')
-            if re.search(rf"mod\s+{part}\s*;", content):
+            # Only match uncommented 'mod' or 'pub mod' statements, including pub (crate|super|in ...) mod
+            mod_pattern = rf"^\s*(pub(\s*\([^)]*\))?\s+)?mod\s+{part}\s*;"
+            found_mod = False
+            for line in content.splitlines():
+                if re.match(mod_pattern, line):
+                    found_mod = True
+                    break
+            if found_mod:
                 print(f"==> DEBUG: Found 'mod {part}' in {mod_rs_path}")
             else:
                 print(f"==> DEBUG: Missing 'mod {part}' in {mod_rs_path}")
@@ -309,7 +321,7 @@ def craft_test(file_path: Path):
             cmd = _find_integration_test_cmd(file_path, parts, crate_root, pkg_flag)
         else:
             cmd = _find_unit_test_cmd(file_path, crate_root, pkg_flag)
-        typer.echo(f"🔧 Test command: {cmd}")
+        typer.echo(f"🔧 Test command:\n{cmd}")
     except ValueError as e:
         if "not in the subpath" in str(e):
             abs_file = file_path.resolve()
