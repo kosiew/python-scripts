@@ -1,8 +1,5 @@
 import os
 import re
-import sys
-import json
-import subprocess
 from pathlib import Path
 import typer
 
