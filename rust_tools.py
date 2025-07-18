@@ -148,7 +148,6 @@ def find_rust_imports(struct_name: str):
         for stmt, note in use_statements:
             typer.echo(f"  {stmt}  // {note}")
 
-@app.command()
 def _get_workspace_and_relative_path(file_path: Path) -> tuple[Path, Path]:
     """Return workspace root and file path relative to workspace, or exit if not inside workspace."""
     cwd = Path(os.getcwd())
@@ -183,92 +182,63 @@ def _find_integration_test_cmd(
     # Get the relative path from tests directory
     rel_path_parts = parts[idx + 1:]  # Everything after 'tests'
     debug_print(f"==> Relative path parts: {rel_path_parts}")
-    
     crate_tests_dir = crate_root / 'tests'
     debug_print(f"==> Crate tests dir: {crate_tests_dir}")
-    
+
     if not rel_path_parts:
-        # File is directly in tests/, use filename as binary
-        test_binary = file_path.stem
-        test_file = crate_tests_dir / f"{test_binary}.rs"
-        if test_file.exists():
-            return f"cargo test {pkg_flag} --test {test_binary}"
-        else:
-            raise RuntimeError(f"{file_path} is not reachable.\nNo test binary found")
-    
-    # Get the target module (e.g., 'parquet')
-    target_module = rel_path_parts[0]
-    debug_print(f"==> Target module: {target_module}")
-    
-    # Look for test binary files in the tests directory
+        return _find_test_binary_for_file_in_tests(file_path, crate_tests_dir, pkg_flag)
+
+    test_binary = _find_test_binary_for_module(crate_tests_dir, rel_path_parts[0], file_path)
+    _check_mod_chain(crate_tests_dir, rel_path_parts, file_path)
+    cmd = f"cargo test {pkg_flag} --test {test_binary}"
+    debug_print(f"==> Test command for integration test: {cmd}")
+    return cmd
+
+
+def _find_test_binary_for_file_in_tests(file_path: Path, crate_tests_dir: Path, pkg_flag: str) -> str:
+    """
+    If the file is directly in tests/, use filename as binary.
+    """
+    test_binary = file_path.stem
+    test_file = crate_tests_dir / f"{test_binary}.rs"
+    if test_file.exists():
+        return f"cargo test -p {pkg_flag} --test {test_binary}" if pkg_flag else f"cargo test --test {test_binary}"
+    else:
+        raise RuntimeError(f"{file_path} is not reachable.\nNo test binary found")
+
+
+def _find_test_binary_for_module(crate_tests_dir: Path, first_module: str, file_path: Path) -> str:
+    """
+    Find the test binary that contains the first module declaration.
+    """
     test_binaries = [f.stem for f in crate_tests_dir.glob('*.rs')]
     debug_print(f"==> Available test binaries: {test_binaries}")
-    
-# Check complete mod chain from test binary down to the final file
-    crate_tests_dir = crate_root / 'tests'
-    
-    # Build the complete path from tests directory
-    current_path = crate_tests_dir
-    path_parts = rel_path_parts
-    
-    if not path_parts:
-        # File is directly in tests/
-        test_binary = file_path.stem
-        test_file = crate_tests_dir / f"{test_binary}.rs"
-        if test_file.exists():
-            return f"cargo test {pkg_flag} --test {test_binary}"
-        else:
-            raise RuntimeError(f"{file_path} is not reachable.\nNo test binary found")
-    
-    # Step 1: Find test binary that contains the first module
-    first_module = path_parts[0]
-    test_binaries = [f.stem for f in crate_tests_dir.glob('*.rs')]
-    test_binary = None
-    
+    mod_pattern = rf"^\s*(pub(\s*\([^)]*\))?\s+)?mod\s+{first_module}\s*;"
     for test_file_stem in test_binaries:
         test_file_path = crate_tests_dir / f"{test_file_stem}.rs"
         if test_file_path.exists():
             content = test_file_path.read_text(encoding='utf-8')
-            # Only match uncommented 'mod' or 'pub mod' statements, including pub (crate|super|in ...) mod
-            mod_pattern = rf"^\s*(pub(\s*\([^)]*\))?\s+)?mod\s+{first_module}\s*;"
             for line in content.splitlines():
                 if re.match(mod_pattern, line):
-                    test_binary = test_file_stem
-                    break
-            if test_binary:
-                break
-    
-    if not test_binary:
-        msg = f"{file_path} is not reachable.\nNo file contains 'mod {first_module}'.\nFiles scanned: {', '.join(sorted(test_binaries))}"
-        raise RuntimeError(msg)
-    
-# Step 2: Check the complete chain
-    current_path = crate_tests_dir
-    debug_print(f"==> DEBUG: Checking chain for path_parts: {path_parts}")
-    
-    # We need to check the mod chain starting from the test binary
-    # and then through each directory level
-    
-    # For the given structure, we should check:
-    # 1. Test binary contains 'mod memory_limit'
-    # 2. memory_limit/mod.rs contains 'mod memory_limit_validation'
-    # 3. memory_limit_validation/mod.rs contains 'mod sort_mem_validation'
-    
-    # Build the actual path to check
+                    debug_print(f"==> Found 'mod {first_module}' in {test_file_path}")
+                    return test_file_stem
+    msg = f"{file_path} is not reachable.\nNo file contains 'mod {first_module}'.\nFiles scanned: {', '.join(sorted(test_binaries))}"
+    raise RuntimeError(msg)
+
+
+def _check_mod_chain(crate_tests_dir: Path, path_parts: tuple, file_path: Path) -> None:
+    """
+    Check the complete mod chain from the test binary down to the final file.
+    """
     check_path = crate_tests_dir
     for i, part in enumerate(path_parts):
         if i == 0:
-            # First part is handled by test binary
             check_path = check_path / part
             continue
-            
-        # Check the mod.rs in the parent directory
         mod_rs_path = check_path / "mod.rs"
         debug_print(f"==> DEBUG: Checking {mod_rs_path} for 'mod {part}'")
-        
         if mod_rs_path.exists():
             content = mod_rs_path.read_text(encoding='utf-8')
-            # Only match uncommented 'mod' or 'pub mod' statements, including pub (crate|super|in ...) mod
             mod_pattern = rf"^\s*(pub(\s*\([^)]*\))?\s+)?mod\s+{part}\s*;"
             found_mod = False
             for line in content.splitlines():
@@ -283,16 +253,12 @@ def _find_integration_test_cmd(
                 raise RuntimeError(msg)
         else:
             debug_print(f"==> DEBUG: {mod_rs_path} does not exist")
-        
         check_path = check_path / part
-    
     # Final check - the actual file
     final_mod_rs = check_path.parent / "mod.rs"
     debug_print(f"==> DEBUG: Checking final file: {final_mod_rs}")
-    
     if final_mod_rs.exists():
         content = final_mod_rs.read_text(encoding='utf-8')
-        # Only match uncommented 'mod' or 'pub mod' statements, including pub (crate|super|in ...) mod
         mod_pattern = rf"^\s*(pub(\s*\([^)]*\))?\s+)?mod\s+{file_path.stem}\s*;"
         found_mod = False
         for line in content.splitlines():
@@ -307,10 +273,6 @@ def _find_integration_test_cmd(
             raise RuntimeError(msg)
     else:
         debug_print(f"==> DEBUG: Final mod.rs {final_mod_rs} does not exist")
-    
-    cmd = f"cargo test {pkg_flag} --test {test_binary}"
-    debug_print(f"==> Test command for integration test: {cmd}")
-    return cmd
 
 def _find_unit_test_cmd(file_path: Path, crate_root: Path, pkg_flag: str) -> str:
     rel_crate = file_path.resolve().relative_to(crate_root)
