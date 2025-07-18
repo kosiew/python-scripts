@@ -41,9 +41,9 @@ def find_containing_crate(directory: Path) -> tuple[str | None, Path | None]:
                 return match.group(1), current
         src_dir = current / "src"
         if src_dir.exists() and (src_dir / "lib.rs").exists():
-            crate = find_crate_name(current)
-            if crate:
-                return crate, current
+            crate_name = find_crate_name(current)
+            if crate_name:
+                return crate_name, current
         current = current.parent
     return None, None
 
@@ -154,7 +154,7 @@ def find_rust_imports(struct_name: str):
 @app.command()
 def craft_test(file_path: Path):
     """
-    Craft a `cargo test` command to run tests in the specified Rust source file.
+    Craft a `cargo test -p <package>` command to run tests in the specified Rust source file.
     """
     cwd = Path(os.getcwd())
     ws = find_workspace_root(cwd) or cwd
@@ -164,16 +164,19 @@ def craft_test(file_path: Path):
         typer.echo("❌ The file is not inside the workspace")
         raise typer.Exit(1)
 
+    # Determine crate name for -p flag
+    crate_name, crate_root = find_containing_crate(file_path.parent)
+    if not crate_name:
+        typer.echo("❌ Could not determine crate name for the file")
+        raise typer.Exit(1)
+    pkg_flag = f"-p {crate_name}"
+
     # Integration tests in tests/ directory
     if rel_to_ws.parts and rel_to_ws.parts[0] == "tests":
         test_name = file_path.stem
-        cmd = f"cargo test --test {test_name}"
+        cmd = f"cargo test {pkg_flag} --test {test_name}"
     else:
         # Unit tests in src/; derive module path
-        crate, crate_root = find_containing_crate(file_path.parent)
-        if not crate_root:
-            typer.echo("❌ Could not determine crate root for the file")
-            raise typer.Exit(1)
         rel = file_path.resolve().relative_to(crate_root)
         parts = rel.with_suffix('').parts
         if parts and parts[0] == 'src':
@@ -181,11 +184,11 @@ def craft_test(file_path: Path):
         if parts and parts[-1] == 'mod':
             parts = parts[:-1]
         module_path = '::'.join(parts)
+        # Use package flag and module filter
         if module_path:
-            # filter tests by module prefix
-            cmd = f"cargo test {module_path}::"
+            cmd = f"cargo test {pkg_flag} {module_path}"
         else:
-            cmd = "cargo test"
+            cmd = f"cargo test {pkg_flag}"
 
     typer.echo(f"🔧 Test command: {cmd}")
 
