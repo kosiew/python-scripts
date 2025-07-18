@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 import typer
 
-app = typer.Typer(help="CLI tool to find Rust imports for a given struct name")
+app = typer.Typer(help="CLI tool to find Rust imports and generate test commands for a given struct or file")
 
 
 def find_workspace_root(start_dir: Path) -> Path | None:
@@ -41,15 +41,15 @@ def find_containing_crate(directory: Path) -> tuple[str | None, Path | None]:
                 return match.group(1), current
         src_dir = current / "src"
         if src_dir.exists() and (src_dir / "lib.rs").exists():
-            crate_name = find_crate_name(current)
-            if crate_name:
-                return crate_name, current
+            crate = find_crate_name(current)
+            if crate:
+                return crate, current
         current = current.parent
     return None, None
 
 
 def find_rust_struct(root_dir: Path, struct_name: str) -> list[Path]:
-    matches = []
+    matches: list[Path] = []
     for filepath in root_dir.rglob("*.rs"):
         content = filepath.read_text(encoding="utf-8")
         if re.search(rf"pub\s+struct\s+{struct_name}\b", content):
@@ -58,7 +58,7 @@ def find_rust_struct(root_dir: Path, struct_name: str) -> list[Path]:
 
 
 def find_re_exports(root_dir: Path, struct_name: str) -> list[tuple[str, str]]:
-    exports = []
+    exports: list[tuple[str, str]] = []
     pattern = re.compile(rf"pub\s+use\s+(.+?)::({struct_name})\s*;")
     for filepath in root_dir.rglob("*.rs"):
         content = filepath.read_text(encoding="utf-8")
@@ -78,7 +78,7 @@ def get_crate_dependencies(directory: Path) -> list[str]:
     if not cargo_path.exists():
         return []
     content = cargo_path.read_text(encoding="utf-8")
-    deps = []
+    deps: list[str] = []
     section = re.search(r"\[dependencies\](.*?)(\[|$)", content, re.DOTALL)
     if section:
         for line in section.group(1).splitlines():
@@ -104,7 +104,7 @@ def find_correct_import(root_dir: Path, struct_name: str, workspace_root: Path |
         path = f.relative_to(workspace_root) if workspace_root else f
         typer.echo(f"   - {path}")
 
-    statements = []
+    statements: list[tuple[str, str]] = []
     for f in struct_files:
         crate, crate_root = find_containing_crate(f)
         if not crate:
@@ -149,6 +149,45 @@ def find_rust_imports(struct_name: str):
         typer.echo("🎯 Suggested `use` statements:")
         for stmt, note in use_statements:
             typer.echo(f"  {stmt}  // {note}")
+
+
+@app.command()
+def craft_test(file_path: Path):
+    """
+    Craft a `cargo test` command to run tests in the specified Rust source file.
+    """
+    cwd = Path(os.getcwd())
+    ws = find_workspace_root(cwd) or cwd
+    try:
+        rel_to_ws = file_path.resolve().relative_to(ws)
+    except ValueError:
+        typer.echo("❌ The file is not inside the workspace")
+        raise typer.Exit(1)
+
+    # Integration tests in tests/ directory
+    if rel_to_ws.parts and rel_to_ws.parts[0] == "tests":
+        test_name = file_path.stem
+        cmd = f"cargo test --test {test_name}"
+    else:
+        # Unit tests in src/; derive module path
+        crate, crate_root = find_containing_crate(file_path.parent)
+        if not crate_root:
+            typer.echo("❌ Could not determine crate root for the file")
+            raise typer.Exit(1)
+        rel = file_path.resolve().relative_to(crate_root)
+        parts = rel.with_suffix('').parts
+        if parts and parts[0] == 'src':
+            parts = parts[1:]
+        if parts and parts[-1] == 'mod':
+            parts = parts[:-1]
+        module_path = '::'.join(parts)
+        if module_path:
+            # filter tests by module prefix
+            cmd = f"cargo test {module_path}::"
+        else:
+            cmd = "cargo test"
+
+    typer.echo(f"🔧 Test command: {cmd}")
 
 
 if __name__ == "__main__":
