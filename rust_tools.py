@@ -177,19 +177,32 @@ def _find_integration_test_cmd(
     if target_module:
         # First check if there's a mod.rs in the same directory that should declare this file
         mod_rs_path = file_path.parent / "mod.rs"
+        found_in_mod_rs = False
+        
         if mod_rs_path.exists():
             print(f"==> Checking mod.rs in same directory: {mod_rs_path}")
             content = mod_rs_path.read_text(encoding='utf-8')
             file_stem = file_path.stem
             if re.search(rf"mod\s+{file_stem}\s*;", content):
                 print(f"==> Found mod declaration for {file_stem} in {mod_rs_path}")
-                test_binary = mod_rs_path.stem  # This will be "mod", but we need the parent dir name
+                found_in_mod_rs = True
                 # Get the parent directory name as the test binary
                 test_binary = file_path.parent.name
                 print(f"==> Test binary from parent dir: {test_binary}")
+            else:
+                print(f"==> mod.rs exists but does not contain 'mod {file_stem};'")
+                # mod.rs exists but doesn't declare this file - this is an error
+                # Don't continue scanning, show error immediately
+                pass
         
-        # If not found in mod.rs, continue with original scanning logic
-        if not test_binary:
+        # If mod.rs exists but doesn't declare the file, show error
+        if mod_rs_path.exists() and not found_in_mod_rs:
+            test_binary = None  # Force error
+            print(f"==> Forcing error: mod.rs exists but missing 'mod {file_stem};'")
+            print(f"==> DEBUG: found_in_mod_rs={found_in_mod_rs}, will set test_binary=None")
+        # If no mod.rs, continue with original scanning logic
+        elif not mod_rs_path.exists():
+            print(f"==> No mod.rs found, continuing scan")
             while True:
                 print(f"==> Scanning directory: {scan_dir}")
                 for rs in scan_dir.glob('*.rs'):
@@ -203,45 +216,103 @@ def _find_integration_test_cmd(
                     print(f"==> Breaking scan loop: test_binary={test_binary}, scan_dir={scan_dir}")
                     break
                 scan_dir = scan_dir.parent
+    print(f"==> Final test_binary value: {test_binary}")
     if not test_binary:
         mod_name = file_path.stem
-        missing_mod = f"mod {mod_name};"
         
-        # Find the exact break point in the chain
-        if target_module:
-            # First check if there should be a mod.rs in the same directory as the test file
-            # that declares the test file itself
-            test_file_dir = file_path.parent
-            mod_rs_path = test_file_dir / "mod.rs"
+        # Build a detailed chain analysis
+        msg_parts = []
+        msg_parts.append(f"🎯 Test file: {file_path}")
+        msg_parts.append(f"📁 Parent directory: {file_path.parent}")
+        
+        # Check for mod.rs in parent directory
+        mod_rs_path = file_path.parent / "mod.rs"
+        if mod_rs_path.exists():
+            msg_parts.append(f"✅ Found mod.rs: {mod_rs_path}")
+            content = mod_rs_path.read_text(encoding='utf-8')
+            file_stem = file_path.stem
             
-            if mod_rs_path.exists():
-                # mod.rs exists, so it should declare this test file
-                break_point = test_file_dir
-                expected_in = missing_mod
+            # Check if this specific file is declared
+            pattern = rf"mod\s+{file_stem}\s*;"
+            if re.search(pattern, content):
+                msg_parts.append(f"✅ Found declaration: 'mod {file_stem};' in {mod_rs_path.name}")
             else:
-                # No mod.rs, so parent directory should declare the target_module
-                break_point = test_file_dir.parent
-                expected_in = f"mod {target_module};"
+                msg_parts.append(f"❌ MISSING: 'mod {file_stem};' in {mod_rs_path.name}")
+                msg_parts.append(f"   Expected declaration: mod {file_stem};")
+                msg_parts.append("")
+                msg_parts.append("🔍 Current mod.rs content:")
+                lines = content.split('\n')
+                for i, line in enumerate(lines, 1):
+                    if 'mod' in line and not line.strip().startswith('//'):
+                        msg_parts.append(f"   {i:3}: {line}")
         else:
-            # File is directly in tests/, should have mod declaration for the file itself
-            break_point = crate_tests_dir
-            expected_in = missing_mod
+            msg_parts.append(f"❌ No mod.rs found in: {file_path.parent}")
+            
+            # Check parent directories for mod declarations
+            current_dir = file_path.parent
+            while current_dir != crate_tests_dir and current_dir != current_dir.parent:
+                parent = current_dir.parent
+                mod_rs_in_parent = parent / "mod.rs"
+                
+                if mod_rs_in_parent.exists():
+                    msg_parts.append(f"\n📁 Checking parent: {parent}")
+                    content = mod_rs_in_parent.read_text(encoding='utf-8')
+                    dir_name = current_dir.name
+                    
+                    if re.search(rf"mod\s+{dir_name}\s*;", content):
+                        msg_parts.append(f"✅ Found: mod {dir_name}; in {mod_rs_in_parent}")
+                    else:
+                        msg_parts.append(f"❌ MISSING: mod {dir_name}; in {mod_rs_in_parent}")
+                        break
+                else:
+                    msg_parts.append(f"❌ No mod.rs in parent: {parent}")
+                    
+                current_dir = parent
         
-        # Look for .rs files in the break point directory
-        rs_files = list(break_point.glob('*.rs'))
+        # Show the complete mod chain that should exist
+        msg_parts.append("\n🔄 Expected mod chain:")
+        rel_path = file_path.relative_to(crate_tests_dir)
+        parts = list(rel_path.with_suffix('').parts)
         
-        msg = f"The test file {file_path} is unreachable by mod declaration.\n"
-        msg += f"Missing '{expected_in}' in {break_point}/"
-        
-        if rs_files:
-            if len(rs_files) == 1:
-                msg += f"{rs_files[0].name}"
-            else:
-                rs_names = [f.name for f in rs_files]
-                msg += f"[{', '.join(rs_names)}]"
+        if len(parts) == 1:
+            # Direct file in tests/
+            expected_line = f"mod {parts[0]};"
+            msg_parts.append(f"   {crate_tests_dir}/mod.rs should contain: {expected_line}")
         else:
-            msg += "*.rs (no .rs files found)"
+            # Nested structure
+            current_path = crate_tests_dir
+            for i, part in enumerate(parts):
+                if i == len(parts) - 1:
+                    # Last part is the file itself
+                    expected_line = f"mod {part};"
+                    msg_parts.append(f"   {current_path}/mod.rs should contain: {expected_line}")
+                else:
+                    # Intermediate directory
+                    expected_line = f"mod {part};"
+                    msg_parts.append(f"   {current_path}/mod.rs should contain: {expected_line}")
+                    current_path = current_path / part
         
+        # List all .rs files in relevant directories for context
+        msg_parts.append(f"\n📋 Context:")
+        msg_parts.append(f"Crate tests directory: {crate_tests_dir}")
+        
+        # List files in the parent directory
+        parent_files = list(file_path.parent.glob('*.rs'))
+        if parent_files:
+            msg_parts.append(f"Files in {file_path.parent}:")
+            for f in sorted(parent_files):
+                marker = "👉 " if f == file_path else "   "
+                msg_parts.append(f"{marker}{f.name}")
+        
+        # List files in crate tests directory
+        if crate_tests_dir != file_path.parent:
+            tests_files = list(crate_tests_dir.glob('*.rs'))
+            if tests_files:
+                msg_parts.append(f"Files in {crate_tests_dir}:")
+                for f in sorted(tests_files):
+                    msg_parts.append(f"   {f.name}")
+        
+        msg = "\n".join(msg_parts)
         print(f"==> ERROR: {msg}")
         typer.echo(f"❌ {msg}")
         raise typer.Exit(1)
