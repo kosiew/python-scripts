@@ -137,12 +137,8 @@ def find_rust_imports(struct_name: str):
             typer.echo(f"  {stmt}  // {note}")
 
 @app.command()
-def craft_test(file_path: Path):
-    """
-    Craft a `cargo test -p <package> --test <testfile>` command to run tests in the specified Rust source file.
-    It scans the entire `tests/` directory for `mod <module>;` declarations.
-    """
-    print(f"==> craft_test called with file_path: {file_path}")
+def _get_workspace_and_relative_path(file_path: Path) -> tuple[Path, Path]:
+    """Return workspace root and file path relative to workspace, or exit if not inside workspace."""
     cwd = Path(os.getcwd())
     print(f"==> Current working directory: {cwd}")
     ws = find_workspace_root(cwd) or cwd
@@ -154,62 +150,78 @@ def craft_test(file_path: Path):
         print(f"==> ERROR: The file {file_path} is not inside the workspace {ws}")
         typer.echo("❌ The file is not inside the workspace")
         raise typer.Exit(1)
+    return ws, rel_to_ws
 
+def _get_crate_info(file_path: Path) -> tuple[str, Path]:
+    """Return crate name and crate root for a file, or exit if not found."""
     crate_name, crate_root = find_containing_crate(file_path)
     print(f"==> Crate name: {crate_name}, crate root: {crate_root}")
     if not crate_name or not crate_root:
         print(f"==> ERROR: Could not determine crate for the file {file_path}")
         typer.echo("❌ Could not determine crate for the file")
         raise typer.Exit(1)
-    pkg_flag = f"-p {crate_name}"
+    return crate_name, crate_root
 
+def _find_integration_test_cmd(
+    file_path: Path, parts: tuple, crate_root: Path, pkg_flag: str
+) -> str:
+    idx = parts.index('tests')
+    print(f"==> 'tests' found at index {idx} in path parts")
+    target_module = parts[idx + 1] if len(parts) > idx + 1 else None
+    print(f"==> Target module: {target_module}")
+    test_binary = None
+    crate_tests_dir = crate_root / 'tests'
+    print(f"==> Crate tests dir: {crate_tests_dir}")
+    scan_dir = file_path.parent
+    print(f"==> Initial scan_dir: {scan_dir}")
+    if target_module:
+        while True:
+            print(f"==> Scanning directory: {scan_dir}")
+            for rs in scan_dir.glob('*.rs'):
+                print(f"==> Checking file: {rs}")
+                content = rs.read_text(encoding='utf-8')
+                if re.search(rf"mod\s+{target_module}\s*;", content):
+                    print(f"==> Found mod declaration for {target_module} in {rs}")
+                    test_binary = rs.stem
+                    break
+            if test_binary or scan_dir.resolve() == crate_tests_dir.resolve():
+                print(f"==> Breaking scan loop: test_binary={test_binary}, scan_dir={scan_dir}")
+                break
+            scan_dir = scan_dir.parent
+    if not test_binary:
+        print(f"==> No mod declaration found, using file stem: {file_path.stem}")
+        test_binary = file_path.stem
+    cmd = f"cargo test {pkg_flag} --test {test_binary}"
+    print(f"==> Test command for integration test: {cmd}")
+    return cmd
+
+def _find_unit_test_cmd(file_path: Path, crate_root: Path, pkg_flag: str) -> str:
+    rel_crate = file_path.resolve().relative_to(crate_root)
+    print(f"==> File relative to crate root: {rel_crate}")
+    parts2 = [p for p in rel_crate.with_suffix('').parts if p not in ('src', 'mod')]
+    print(f"==> Module path parts: {parts2}")
+    module_path = '::'.join(parts2)
+    print(f"==> Module path: {module_path}")
+    cmd = f"cargo test {pkg_flag} {module_path}" if module_path else f"cargo test {pkg_flag}"
+    print(f"==> Test command for unit test/example: {cmd}")
+    return cmd
+
+@app.command()
+def craft_test(file_path: Path):
+    """
+    Craft a `cargo test -p <package> --test <testfile>` command to run tests in the specified Rust source file.
+    It scans the entire `tests/` directory for `mod <module>;` declarations.
+    """
+    print(f"==> craft_test called with file_path: {file_path}")
+    ws, rel_to_ws = _get_workspace_and_relative_path(file_path)
+    crate_name, crate_root = _get_crate_info(file_path)
+    pkg_flag = f"-p {crate_name}"
     parts = rel_to_ws.with_suffix('').parts
     print(f"==> Path parts: {parts}")
-    # Check if under tests/
     if 'tests' in parts:
-        idx = parts.index('tests')
-        print(f"==> 'tests' found at index {idx} in path parts")
-        # Determine target module (first subdir under tests)
-        target_module = parts[idx + 1] if len(parts) > idx + 1 else None
-        print(f"==> Target module: {target_module}")
-        test_binary = None
-        crate_tests_dir = crate_root / 'tests'
-        print(f"==> Crate tests dir: {crate_tests_dir}")
-        # Scan upward from file parent to tests directory
-        scan_dir = file_path.parent
-        print(f"==> Initial scan_dir: {scan_dir}")
-        if target_module:
-            while True:
-                print(f"==> Scanning directory: {scan_dir}")
-                # Search for files declaring mod <target_module> in this directory
-                for rs in scan_dir.glob('*.rs'):
-                    print(f"==> Checking file: {rs}")
-                    content = rs.read_text(encoding='utf-8')
-                    if re.search(rf"mod\s+{target_module}\s*;", content):
-                        print(f"==> Found mod declaration for {target_module} in {rs}")
-                        test_binary = rs.stem
-                        break
-                if test_binary or scan_dir.resolve() == crate_tests_dir.resolve():
-                    print(f"==> Breaking scan loop: test_binary={test_binary}, scan_dir={scan_dir}")
-                    break
-                scan_dir = scan_dir.parent
-        # Fallback to the file stem if no mod declaration found
-        if not test_binary:
-            print(f"==> No mod declaration found, using file stem: {file_path.stem}")
-            test_binary = file_path.stem
-        cmd = f"cargo test {pkg_flag} --test {test_binary}"
-        print(f"==> Test command for integration test: {cmd}")
+        cmd = _find_integration_test_cmd(file_path, parts, crate_root, pkg_flag)
     else:
-        # unit tests or example
-        rel_crate = file_path.resolve().relative_to(crate_root)
-        print(f"==> File relative to crate root: {rel_crate}")
-        parts2 = [p for p in rel_crate.with_suffix('').parts if p not in ('src', 'mod')]
-        print(f"==> Module path parts: {parts2}")
-        module_path = '::'.join(parts2)
-        print(f"==> Module path: {module_path}")
-        cmd = f"cargo test {pkg_flag} {module_path}" if module_path else f"cargo test {pkg_flag}"
-        print(f"==> Test command for unit test/example: {cmd}")
-
+        cmd = _find_unit_test_cmd(file_path, crate_root, pkg_flag)
     typer.echo(f"🔧 Test command: {cmd}")
 
 if __name__ == "__main__":
