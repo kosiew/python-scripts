@@ -94,8 +94,8 @@ def find_correct_import(root_dir: Path, struct_name: str, workspace_root: Path |
     if not struct_files and current_crate:
         deps = get_crate_dependencies(Path(os.getcwd()))
         typer.echo(f"❌ Struct `{struct_name}` not found in workspace")
-        sugg = [f"use {normalize_crate_name(d)}::{struct_name};" for d in deps]
-        for s in sugg[:3]:
+        suggestions = [f"use {normalize_crate_name(d)}::{struct_name};" for d in deps]
+        for s in suggestions[:3]:
             typer.echo(f"  {s}")
         return None
 
@@ -154,7 +154,8 @@ def find_rust_imports(struct_name: str):
 @app.command()
 def craft_test(file_path: Path):
     """
-    Craft a `cargo test -p <package>` command to run tests in the specified Rust source file.
+    Craft a `cargo test -p <package> --test <testfile>` command to run tests in the specified Rust source file.
+    It detects nested test modules by scanning the parent `mod.rs` for `mod <file>;` entries.
     """
     cwd = Path(os.getcwd())
     ws = find_workspace_root(cwd) or cwd
@@ -164,19 +165,34 @@ def craft_test(file_path: Path):
         typer.echo("❌ The file is not inside the workspace")
         raise typer.Exit(1)
 
-    # Determine crate name for -p flag
+    # Determine crate name
     crate_name, crate_root = find_containing_crate(file_path.parent)
     if not crate_name:
         typer.echo("❌ Could not determine crate name for the file")
         raise typer.Exit(1)
     pkg_flag = f"-p {crate_name}"
 
-    # Integration tests in tests/ directory
+    # Tests in tests/ directory
     if rel_to_ws.parts and rel_to_ws.parts[0] == "tests":
-        test_name = file_path.stem
-        cmd = f"cargo test {pkg_flag} --test {test_name}"
+        # If nested under tests/<module>/... scan mod.rs
+        parts = rel_to_ws.with_suffix('').parts
+        if len(parts) > 2:
+            module = parts[1]
+            mod_rs = crate_root / "tests" / module / "mod.rs"
+            testfile = file_path.stem
+            if mod_rs.exists():
+                content = mod_rs.read_text(encoding="utf-8")
+                # look for `mod <testfile>;`
+                if re.search(rf"mod\s+{testfile}\s*;", content):
+                    cmd = f"cargo test {pkg_flag} --test {module}"
+                else:
+                    cmd = f"cargo test {pkg_flag} --test {testfile}"
+            else:
+                cmd = f"cargo test {pkg_flag} --test {testfile}"
+        else:
+            cmd = f"cargo test {pkg_flag} --test {file_path.stem}"
     else:
-        # Unit tests in src/; derive module path
+        # Unit tests in src/
         rel = file_path.resolve().relative_to(crate_root)
         parts = rel.with_suffix('').parts
         if parts and parts[0] == 'src':
@@ -184,11 +200,7 @@ def craft_test(file_path: Path):
         if parts and parts[-1] == 'mod':
             parts = parts[:-1]
         module_path = '::'.join(parts)
-        # Use package flag and module filter
-        if module_path:
-            cmd = f"cargo test {pkg_flag} {module_path}"
-        else:
-            cmd = f"cargo test {pkg_flag}"
+        cmd = f"cargo test {pkg_flag} {module_path}" if module_path else f"cargo test {pkg_flag}"
 
     typer.echo(f"🔧 Test command: {cmd}")
 
