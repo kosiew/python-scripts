@@ -185,9 +185,75 @@ def _find_integration_test_cmd(
     if not rel_path_parts:
         return _find_test_binary_for_file_in_tests(file_path, crate_tests_dir, pkg_flag)
 
+    # Handle direct test files in tests directory
+    if len(rel_path_parts) == 1:
+        # This is a test file directly in tests directory
+        test_binary = rel_path_parts[0]
+        test_file = crate_tests_dir / f"{test_binary}.rs"
+        if test_file.exists():
+            return f"cargo test {pkg_flag} --test {test_binary}"
+        else:
+            # Try to find it as a module within another test binary
+            test_binary = _find_test_binary_for_module(crate_tests_dir, rel_path_parts[0], file_path)
+            return f"cargo test {pkg_flag} --test {test_binary}"
+    
+    # Handle integration test structure with subdirectories
+    if len(rel_path_parts) >= 2:
+        # Case: schema_adapter/schema_adapter_integration_tests
+        # We need to find which test binary contains this module
+        
+        # First, check if the last part is a test file in a subdirectory
+        test_name = rel_path_parts[-1]
+        directory_name = rel_path_parts[-2]
+        
+        # Get all available test binaries (.rs files in tests directory)
+        available_test_binaries = [f.stem for f in crate_tests_dir.glob('*.rs')]
+        
+        if available_test_binaries:
+            # Look for test binaries that contain the directory as a module
+            for test_binary in available_test_binaries:
+                test_file = crate_tests_dir / f"{test_binary}.rs"
+                if test_file.exists():
+                    content = test_file.read_text(encoding='utf-8')
+                    # Check if this test binary has a mod declaration for the directory
+                    mod_pattern = rf"^\s*(pub(\s*\([^)]*\))?\s+)?mod\s+{directory_name}\b"
+                    if re.search(mod_pattern, content, re.MULTILINE):
+                        return f"cargo test {pkg_flag} --test {test_binary} -- {directory_name}"
+        
+        # If no specific test binary found with the module, use directory name
+        test_binary = directory_name
+        test_file = crate_tests_dir / f"{test_binary}.rs"
+        if test_file.exists():
+            return f"cargo test {pkg_flag} --test {test_binary}"
+    
+    # Check for direct test files
+    if len(rel_path_parts) >= 1 and rel_path_parts[-1].endswith('.rs'):
+        test_binary = rel_path_parts[-1][:-3]  # Remove .rs extension
+        test_file = crate_tests_dir / f"{test_binary}.rs"
+        if test_file.exists():
+            return f"cargo test {pkg_flag} --test {test_binary}"
+    
+    # Use the original logic to find the test binary
     test_binary = _find_test_binary_for_module(crate_tests_dir, rel_path_parts[0], file_path)
-    _check_mod_chain(crate_tests_dir, rel_path_parts, file_path)
-    cmd = f"cargo test {pkg_flag} --test {test_binary}"
+    
+    # For nested structures, add the remaining parts as module path
+    if len(rel_path_parts) > 1:
+        # Find the module path from the remaining parts
+        remaining_parts = rel_path_parts[1:]
+        
+        # If the last part is a .rs file, use its directory as module path
+        if remaining_parts[-1].endswith('.rs'):
+            module_path = "::".join(remaining_parts[:-1])  # Just the directory path
+            if module_path:
+                cmd = f"cargo test {pkg_flag} --test {test_binary} -- {module_path}"
+            else:
+                cmd = f"cargo test {pkg_flag} --test {test_binary}"
+        else:
+            module_path = "::".join(remaining_parts)
+            cmd = f"cargo test {pkg_flag} --test {test_binary} -- {module_path}"
+    else:
+        cmd = f"cargo test {pkg_flag} --test {test_binary}"
+    
     debug_print(f"==> Test command for integration test: {cmd}")
     return cmd
 
