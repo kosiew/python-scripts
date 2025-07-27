@@ -210,7 +210,7 @@ def _find_test_binary_for_module(crate_tests_dir: Path, first_module: str, file_
     """
     test_binaries = [f.stem for f in crate_tests_dir.glob('*.rs')]
     debug_print(f"==> Available test binaries: {test_binaries}")
-    mod_pattern = rf"^\s*(pub(\s*\([^)]*\))?\s+)?mod\s+{first_module}\s*;"
+    mod_pattern = rf"^\s*(pub(\s*\([^)]*\))?\s+)?mod\s+{first_module}\b"
     for test_file_stem in test_binaries:
         test_file_path = crate_tests_dir / f"{test_file_stem}.rs"
         if test_file_path.exists():
@@ -219,7 +219,7 @@ def _find_test_binary_for_module(crate_tests_dir: Path, first_module: str, file_
                 if re.match(mod_pattern, line):
                     debug_print(f"==> Found 'mod {first_module}' in {test_file_path}")
                     return test_file_stem
-    msg = f"{file_path} is not reachable.\nNo file contains 'mod {first_module}'.\nFiles scanned: {', '.join(sorted(test_binaries))}"
+    msg = f"{file_path} is not reachable.\nNo test binaries contain 'mod {first_module}'.\nFiles scanned: {', '.join(sorted(test_binaries))}"
     raise RuntimeError(msg)
 
 
@@ -236,7 +236,7 @@ def _check_mod_chain(crate_tests_dir: Path, path_parts: tuple, file_path: Path) 
         debug_print(f"==> DEBUG: Checking {mod_rs_path} for 'mod {part}'")
         if mod_rs_path.exists():
             content = mod_rs_path.read_text(encoding='utf-8')
-            mod_pattern = rf"^\s*(pub(\s*\([^)]*\))?\s+)?mod\s+{part}\s*;"
+            mod_pattern = rf"^\s*(pub(\s*\([^)]*\))?\s+)?mod\s+{part}\b"
             found_mod = False
             for line in content.splitlines():
                 if re.match(mod_pattern, line):
@@ -256,7 +256,7 @@ def _check_mod_chain(crate_tests_dir: Path, path_parts: tuple, file_path: Path) 
     debug_print(f"==> DEBUG: Checking final file: {final_mod_rs}")
     if final_mod_rs.exists():
         content = final_mod_rs.read_text(encoding='utf-8')
-        mod_pattern = rf"^\s*(pub(\s*\([^)]*\))?\s+)?mod\s+{file_path.stem}\s*;"
+        mod_pattern = rf"^\s*(pub(\s*\([^)]*\))?\s+)?mod\s+{file_path.stem}\b"
         found_mod = False
         for line in content.splitlines():
             if re.match(mod_pattern, line):
