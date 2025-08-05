@@ -18,7 +18,7 @@ app = typer.Typer()
 console = Console()
 
 # Constants
-DEFAULT_CRITERION_DIR = Path.home() / ".cargo" / "target" / "criterion"
+DEFAULT_CRITERION_DIR = Path.cwd() / "target" / "criterion"
 
 
 def find_criterion_dir() -> Path:
