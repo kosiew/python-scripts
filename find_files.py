@@ -13,7 +13,6 @@ import fnmatch
 import subprocess
 import shutil
 from datetime import datetime
-import re
 
 app = typer.Typer(help="Find files in external drives")
 
@@ -66,11 +65,9 @@ def search_files(search_term: str, folders: List[str], extensions: List[str]) ->
             for root, dirs, files in os.walk(folder_path):
                 for filename in files:
                     filename_lower = filename.lower()
-                    # Normalize filename and search term to ignore punctuation
-                    filename_norm = re.sub(r'[^a-z0-9]+', ' ', filename_lower)
-                    search_norm = re.sub(r'[^a-z0-9]+', ' ', search_term_lower).strip()
-                    # Check if normalized filename contains normalized search term
-                    if search_norm in filename_norm:
+                    
+                    # Check if filename contains search term
+                    if search_term_lower in filename_lower:
                         # Check if file has one of the desired extensions
                         for ext_pattern in extensions:
                             if fnmatch.fnmatch(filename_lower, ext_pattern.lower()):
