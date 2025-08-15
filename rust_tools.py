@@ -239,18 +239,25 @@ def _find_integration_test_cmd(
     # For nested structures, add the remaining parts as module path
     if len(rel_path_parts) > 1:
         # Find the module path from the remaining parts
-        remaining_parts = rel_path_parts[1:]
-        
+        remaining_parts = list(rel_path_parts[1:])
+
+        # If the last part is a `mod` (from mod.rs), drop it so we don't append '::mod'
+        if remaining_parts and remaining_parts[-1] == 'mod':
+            remaining_parts = remaining_parts[:-1]
+
         # If the last part is a .rs file, use its directory as module path
-        if remaining_parts[-1].endswith('.rs'):
+        if remaining_parts and remaining_parts[-1].endswith('.rs'):
             module_path = "::".join(remaining_parts[:-1])  # Just the directory path
             if module_path:
                 cmd = f"cargo test {pkg_flag} --test {test_binary} -- {module_path}"
             else:
                 cmd = f"cargo test {pkg_flag} --test {test_binary}"
-        else:
+        elif remaining_parts:
             module_path = "::".join(remaining_parts)
             cmd = f"cargo test {pkg_flag} --test {test_binary} -- {module_path}"
+        else:
+            # No remaining parts after stripping 'mod' -> run whole test binary
+            cmd = f"cargo test {pkg_flag} --test {test_binary}"
     else:
         cmd = f"cargo test {pkg_flag} --test {test_binary}"
     
