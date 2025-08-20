@@ -1,5 +1,8 @@
 import os
 import re
+import subprocess
+import shutil
+import sys
 from pathlib import Path
 import typer
 
@@ -355,6 +358,29 @@ def _find_unit_test_cmd(file_path: Path, crate_root: Path, pkg_flag: str) -> str
     debug_print(f"==> Test command for unit test/example: {cmd}")
     return cmd
 
+
+def _copy_ctest_variant_to_clipboard(cmd: str) -> None:
+    """
+    Create a `ctest`-prefixed variant of `cmd` and attempt to copy it to the macOS clipboard.
+    On non-mac platforms print the ctest variant instead.
+    """
+    try:
+        ctest_cmd = re.sub(r'^\s*cargo\s+test', 'ctest', cmd, count=1)
+        # Prefer pbcopy on macOS
+        if sys.platform == 'darwin' and shutil.which('pbcopy'):
+            subprocess.run(['pbcopy'], input=ctest_cmd.encode('utf-8'), check=False)
+            typer.echo(f"📋 Copied to clipboard: {ctest_cmd}")
+        elif sys.platform == 'darwin':
+            # Fallback to osascript if pbcopy missing
+            safe = ctest_cmd.replace('"', '\\"')
+            subprocess.run(['osascript', '-e', f'set the clipboard to "{safe}"'], check=False)
+            typer.echo(f"📋 Copied to clipboard via osascript: {ctest_cmd}")
+        else:
+            typer.echo("⚠️ Clipboard copy not supported on this platform; here is the ctest variant:")
+            typer.echo(ctest_cmd)
+    except Exception as e:
+        typer.echo(f"⚠️ Could not copy to clipboard: {e}")
+
 @app.command()
 def craft_test(file_path: Path):
     """
@@ -373,6 +399,8 @@ def craft_test(file_path: Path):
         else:
             cmd = _find_unit_test_cmd(file_path, crate_root, pkg_flag)
         typer.echo(f"🔧 Test command:\n{cmd}")
+        # Copy `ctest` variant to clipboard (extracted helper)
+        _copy_ctest_variant_to_clipboard(cmd)
     except ValueError as e:
         if "not in the subpath" in str(e):
             abs_file = file_path.resolve()
