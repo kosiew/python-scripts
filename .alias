@@ -769,11 +769,11 @@ iprfb() {
 }
 
 icask() {
-  run_alias_py icask2 "$@"
+  run_alias_py icask "$@"
 }
 
 ictriage() {
-  run_alias_py ictriage2 "$@"
+  run_alias_py ictriage "$@"
 }
 
 iask() {

@@ -2164,73 +2164,8 @@ Conclusion:
             typer.echo(prompt)
 
 
-@app.command(help="Generate strategic instructions for coding agents with optional reviewer notes")
-def icask(
-    url: str = typer.Argument(..., help="GitHub issue/PR URL"),
-    comment: str = typer.Argument("", help="Optional reviewer comment to incorporate"),
-    no_open: bool = typer.Option(False, "--no-open", help="Do not open the file in $EDITOR"),
-    editor: Optional[str] = typer.Option(None, "--editor", "-e", help="Editor to open file"),
-):
-    """
-    Generate strategic instructions for coding agents (like Codex) with optional reviewer notes.
-    
-    This command analyzes GitHub issues and produces actionable templates for coding agents,
-    optionally incorporating and rephrasing reviewer comments for better clarity.
-    """
-    # Rephrase the optional comment if provided and llm is available
-    rephrased = ""
-    if comment.strip():
-        if _which("llm"):
-            try:
-                rephrase_prompt = "Rephrase this reviewer note in 1–2 concise, professional sentences. Keep key constraints; avoid first person; do not quote verbatim."
-                proc = _run(["llm", "-s", rephrase_prompt], input=comment)
-                rephrased = proc.stdout.strip() if proc.stdout.strip() else comment
-            except Exception:
-                rephrased = comment
-        else:
-            rephrased = comment
-    
-    # Build the summary step based on whether we have a rephrased comment
-    if rephrased:
-        summary_step = f"1. **Summarize** the issue clearly and concisely, incorporating this reviewer note (already rephrased): {rephrased}"
-    else:
-        summary_step = "1. **Summarize** the issue clearly and concisely."
-    
-    # Compose the full prompt
-    prompt = f"""**Role:** You are a **senior open-source contributor and software engineer**.
-
-**Task:** Given a GitHub issue and the associated codebase, produce a strategic and actionable review by following these steps:
-
-{summary_step}
-2. **Complete the following template**, which will be used as instructions for a coding agent (e.g., Codex) to act upon.
-
----
-
-**Instruction Template**
-
-## <Concise Description of the Issue>
-
-**Steps:**
-
-1. Review the repository to locate all areas relevant to the issue.
-2. Determine whether the solution requires modifying existing code or extending the codebase.
-3. Provide a high-level, detailed action plan for resolving the issue.
-
----
-
-**Guidelines:**
-
-* Do **not** generate code.
-* Keep the commentary concise and strategic.
-* Focus on problem analysis and solution direction rather than implementation details.
-* Ensure the output is actionable for a coding agent without unnecessary narrative."""
-    
-    # Use the existing issue_to_file functionality
-    issue_to_file(url=url, prompt=prompt, prefix="icask", no_open=no_open, editor=editor)
-
-
 @app.command(help="Generate strategic instructions using a provided template and write to icask file")
-def icask2(
+def icask(
     url: str = typer.Argument(..., help="GitHub issue/PR URL"),
     comment: str = typer.Argument("", help="Optional reviewer comment to incorporate"),
     prefix: str = typer.Option("icask", "--prefix", "-p", help="Filename prefix"),
@@ -2276,7 +2211,7 @@ def icask2(
 
 
 @app.command(help="Generate a structured triage file using a provided template and write to ictriage file")
-def ictriage2(
+def ictriage(
     url: str = typer.Argument(..., help="GitHub issue/PR URL"),
     prefix: str = typer.Option("ictriage", "--prefix", "-p", help="Filename prefix"),
     local_md: str = typer.Option("ictriage.md", "--local-md", help="Local template filename next to alias.py"),
@@ -2302,55 +2237,6 @@ def ictriage2(
     _render_and_write(issue_id=issue_id, url=url, prefix=prefix, tpl_text=tpl_text, summary_text=summary_text, ts=ts, no_open=no_open, editor=editor)
 
 
-@app.command(help="Perform structured triage of GitHub issues with standardized output format")
-def ictriage(
-    url: str = typer.Argument(..., help="GitHub issue/PR URL"),
-    no_open: bool = typer.Option(False, "--no-open", help="Do not open the file in $EDITOR"),
-    editor: Optional[str] = typer.Option(None, "--editor", "-e", help="Editor to open file"),
-):
-    """
-    Perform structured triage of GitHub issues with standardized output format.
-    
-    This command analyzes GitHub issues and produces a standardized triage report
-    with strict formatting requirements for consistent issue processing.
-    """
-    description = "1. **Describe** the issue clearly and concisely, with relevant information and code excerpt for investigation"
-    
-    # Compose the full prompt with the exact template format
-    prompt = f"""**Role:** You are a **senior open-source contributor and software engineer**.
-
-**Task:** Given a GitHub issue and the associated codebase, perform **triage**.
-
-**OUTPUT RULES (STRICT):**
-- Produce **only** the sections shown below, in this exact order and formatting.
-- After the Description, **reproduce the Steps block VERBATIM** (do not add, remove, or change words, bullets, or indentation).
-- **Do not** add any extra sections such as "Analysis", "Determination", "Conclusion", or repository-specific sub-steps.
-- Keep the Description concise.
-- The first heading (## ...) should be the issue title or the primary error message.
-
----
-**Output Format (reproduce exactly, except fill in the Description and heading):**
-
-## <Issue Title or Primary Error Message>
-
-**Description of issue:**
-{description}
-
-**Steps:**
-
-1. Review the repository to locate all areas relevant to the issue.
-2. Provide a high-level, detailed action plan for resolving the issue.
-3. Determine whether the issue is
-	- Bug to be fixed.
-	- Feature to be implemented.
-	- Update documentation to improve user experience.
-	- Ask user for more information.
-	- Other (with justification).
-4. Provide a high-level, detailed action plan for resolving the issue.
----"""
-    
-    # Use the existing issue_to_file functionality
-    issue_to_file(url=url, prompt=prompt, prefix="ictriage", no_open=no_open, editor=editor)
 
 
 @app.command(help="Ask a specific question about a GitHub issue")
