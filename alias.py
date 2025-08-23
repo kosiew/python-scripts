@@ -202,6 +202,9 @@ def issue_to_file(
         typer.secho("❌ 'llm' not found in PATH.", fg=typer.colors.RED)
         raise typer.Exit(1)
 
+
+    
+
     issue_id = _extract_id(url)
     outpath = _gen_filename(issue_id, f"issue:{url}", prefix)
     outpath.parent.mkdir(parents=True, exist_ok=True)
@@ -955,6 +958,58 @@ def gappdiff(dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Check 
         raise typer.Exit(1)
 
 
+@app.command(help="Reverse-apply a patch saved in the clipboard to revert changes (grevdiff)")
+def grevdiff() -> None:
+    """Save clipboard to rev.patch, run `git apply -R rev.patch`, then remove the file.
+
+    Mirrors the shell `grevdiff` helper. Requires macOS pbpaste.
+    """
+    if sys.platform != "darwin":
+        typer.secho("❌ grevdiff currently supports macOS (pbpaste).", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    if not _which("pbpaste"):
+        typer.secho("❌ pbpaste not found in PATH.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    typer.secho("📋 Saving clipboard contents to rev.patch...", fg=typer.colors.CYAN)
+    try:
+        proc = _run(["pbpaste"], check=False)
+        content = proc.stdout or ""
+    except Exception:
+        content = ""
+
+    if not content:
+        typer.secho("❌ Failed to read clipboard or clipboard empty.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    rev_path = Path.cwd() / "rev.patch"
+    try:
+        rev_path.write_text(content, encoding="utf-8")
+    except Exception:
+        typer.secho("❌ Failed to write rev.patch", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    typer.secho("↩️ Reversing patch...", fg=typer.colors.CYAN)
+    try:
+        _run(["git", "apply", "-R", str(rev_path)])
+    except Exception:
+        typer.secho("❌ Failed to apply reverse patch", fg=typer.colors.RED)
+        try:
+            rev_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise typer.Exit(1)
+
+    typer.secho("🧹 Cleaning up rev.patch...", fg=typer.colors.CYAN)
+    try:
+        rev_path.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+    typer.secho("✅ Patch reverted!", fg=typer.colors.GREEN)
+
+
 @app.command(help="Stage a single file and commit with an AI-generated message (gfilecommit)")
 def gfilecommit(file: str = typer.Argument(..., help="File path to stage and commit")) -> None:
     """Stage the given file, generate a commit message from the staged diff using `llm`, and commit.
@@ -1075,6 +1130,56 @@ def gsplit() -> None:
         typer.secho("⚠️ gfcommit encountered errors; some files may be skipped.", fg=typer.colors.YELLOW)
 
     typer.secho("✅ Done! All files have been committed individually.", fg=typer.colors.GREEN)
+
+
+@app.command(help="Show added and deleted files compared to a branch (gadded)")
+def gadded(branch: str = typer.Argument(..., help="Branch to compare against")) -> None:
+    """Show files added and deleted compared to <branch>...HEAD and open the list in $EDITOR.
+
+    Mirrors the existing shell helper: prints 'Added files:' then 'Deleted files:' and
+    opens the result in the user's editor (falls back to vi).
+    """
+    try:
+        proc = _run(["git", "diff", "--name-status", f"{branch}...HEAD"], check=False)
+        out = proc.stdout or ""
+    except Exception:
+        typer.secho("❌ Not a git repo or git error.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    added: List[str] = []
+    deleted: List[str] = []
+
+    for ln in out.splitlines():
+        parts = ln.split()
+        if len(parts) >= 2:
+            status = parts[0]
+            path = parts[1]
+            if status == "A":
+                added.append(path)
+            elif status == "D":
+                deleted.append(path)
+
+    lines: List[str] = []
+    lines.append("📂 Added files:")
+    if added:
+        lines.extend(added)
+    else:
+        lines.append("(none)")
+    lines.append("")
+    lines.append("🗑️ Deleted files:")
+    if deleted:
+        lines.extend(deleted)
+    else:
+        lines.append("(none)")
+
+    content = "\n".join(lines)
+
+    outpath = Path(os.path.expanduser("~/tmp")) / f"gadded-{_nowstamp()}.txt"
+    outpath.parent.mkdir(parents=True, exist_ok=True)
+    outpath.write_text(content, encoding="utf-8")
+
+    editor = os.environ.get("EDITOR") or "vi"
+    _open_in_editor(outpath, editor)
 
 @app.command(name="chezcrypt")
 def chezcrypt_cmd(dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be encrypted without running chezmoi"),

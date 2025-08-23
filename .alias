@@ -439,35 +439,13 @@ gappdiff() {
 
 
 grevdiff() {
-  echo "📋 Saving clipboard contents to rev.patch..."
-  pbpaste > rev.patch || { echo "❌ Failed to write rev.patch"; return 1; }
-
-  echo "↩️ Reversing patch..."
-  git apply -R rev.patch || { echo "❌ Failed to apply reverse patch"; rm -f rev.patch; return 1; }
-
-  echo "🧹 Cleaning up rev.patch..."
-  rm -f rev.patch
-
-  echo "✅ Patch reverted!"
+  run_alias_py grevdiff "$@"
 }
 
  
 
 gadded() {
-  if [ $# -ne 1 ]; then
-    echo "Usage: gadded <branch>"
-    return 1
-  fi
-
-  local branch="$1"
-  
-  {
-    echo "📂 Added files:"
-    git diff --name-status "${branch}...HEAD" | awk '$1 == "A" {print $2}'
-    echo
-    echo "🗑️ Deleted files:"
-    git diff --name-status "${branch}...HEAD" | awk '$1 == "D" {print $2}'
-  } | vi -
+  run_alias_py gadded "$1"
 }
 
 
