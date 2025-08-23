@@ -2035,6 +2035,95 @@ def icodex(
     issue_to_file(url=url, prompt=prompt, prefix="icodex", no_open=no_open, editor=editor)
 
 
+@app.command(help="Generate strategic review for GitHub issue and associated commit changes")
+def iprfb(
+    issue: str = typer.Argument(..., help="GitHub issue URL or issue summary text"),
+    commit_hash: str = typer.Argument(..., help="Commit hash to review"),
+    no_open: bool = typer.Option(False, "--no-open", help="Do not open the file in $EDITOR"),
+    editor: Optional[str] = typer.Option(None, "--editor", "-e", help="Editor to open file"),
+):
+    """
+    Generate strategic review for a GitHub issue and associated commit changes.
+    
+    This command can work in two modes:
+    - URL mode: Provide a GitHub issue URL to fetch and summarize the issue
+    - Summary mode: Provide pre-written issue summary text
+    
+    The review focuses on consistency, redundancy, and effectiveness of the changes.
+    """
+    # Determine if first argument is a URL or summary text
+    is_url = issue.startswith(("http://", "https://"))
+    
+    # Generate short title for filename
+    short_title = "issue-review"
+    if _which("llm"):
+        try:
+            title_prompt = "Condense this into a 6–10 word review title (no punctuation). If it's a URL, derive the title from the issue context."
+            proc = _run(["llm", "-s", title_prompt], input=issue)
+            if proc.stdout.strip():
+                short_title = proc.stdout.strip()
+        except Exception:
+            pass
+    
+    # Fallback title generation if llm failed
+    if short_title == "issue-review":
+        import re
+        sanitized = re.sub(r"https?://", "", issue)
+        sanitized = re.sub(r"[^\w\s-]", "", sanitized)
+        sanitized = re.sub(r"\s+", " ", sanitized).strip()
+        short_title = sanitized[:60] if sanitized else "issue-review"
+    
+    # Build the appropriate summary step and prefilled content
+    if is_url:
+        summary_step = f"1. **Summarize** the issue clearly and concisely (source: {issue})."
+        prefilled_summary = ""
+    else:
+        summary_step = "1. **Use the provided issue summary** (do not re-summarize):"
+        # Format the summary with proper indentation
+        indented_summary = "\n".join(f"> {line}" for line in issue.split("\n"))
+        prefilled_summary = f"\n\n**Issue Summary (provided):**\n\n{indented_summary}\n"
+    
+    # Compose the full prompt
+    prompt = f"""**Role:** You are a **senior open-source contributor and software engineer**.
+
+**Task:** Given a GitHub issue and the associated codebase, produce a strategic and actionable review by following these steps:
+
+{summary_step}
+2. **Review the changes introduced in commit: {commit_hash}**
+3. **Provide constructive and actionable feedback**, focusing on:
+
+- **Consistency** — Are the changes aligned with the repository's coding conventions and structure?
+- **Redundancy** — Do the changes introduce any code duplication that could be avoided or refactored?
+- **Effectiveness** — Do the changes fully and appropriately address the described issue?
+
+Conclusion:
+- Approve
+- Approve with Suggestions (list specific follow-up actions)
+- Request Changes (list specific blocking issues)
+
+{prefilled_summary}"""
+    
+    # Handle execution based on mode
+    if is_url:
+        # URL mode: use issue_to_file functionality
+        prefix = f"iprfb:{short_title}"
+        issue_to_file(url=issue, prompt=prompt, prefix=prefix, no_open=no_open, editor=editor)
+    else:
+        # Summary mode: direct LLM execution or output
+        if not _which("llm"):
+            typer.secho("❌ 'llm' not found in PATH. Outputting prompt instead:", fg=typer.colors.RED)
+            typer.echo(prompt)
+            return
+        
+        try:
+            proc = _run(["llm"], input=prompt)
+            typer.echo(proc.stdout)
+        except Exception as exc:
+            typer.secho(f"❌ Failed to run llm: {exc}", fg=typer.colors.RED)
+            typer.secho("Outputting prompt instead:", fg=typer.colors.YELLOW)
+            typer.echo(prompt)
+
+
 if __name__ == "__main__":
     app()
 
