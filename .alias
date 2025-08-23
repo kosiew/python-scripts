@@ -871,13 +871,7 @@ irespond() {
 }
 
 isum() {
-  if [ $# -ne 1 ]; then
-    echo "Usage: isum <github-issue-url>"
-    return 1
-  fi
-  _process_issue "$1" \
-    "Summarize the issue with headings, bullet points, and add diagrams if they help clarify the concepts." \
-    "isum"
+  run_alias_py isum "$@"
 }
 
 # summarize issue in clipboard
