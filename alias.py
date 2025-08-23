@@ -386,5 +386,22 @@ def chezcrypt_cmd(dry_run: bool = typer.Option(False, "--dry-run", help="Show wh
             typer.secho(f"❌ Error processing {target_dir}: {exc}", fg=typer.colors.RED)
             continue
 
+
+@app.command(name="chezupdate")
+def chezupdate_cmd(dry_run: bool = typer.Option(False, "--dry-run", help="Show the chezmoi update command without running it")) -> None:
+    """Run `chezmoi update` to refresh local dotfiles. Use --dry-run to print the command instead of executing."""
+    cmd = ["chezmoi", "update"]
+    if dry_run:
+        typer.echo("Would run: " + " ".join(cmd))
+        raise typer.Exit(0)
+
+    try:
+        typer.secho("chezmoi update in progress ....", fg=typer.colors.CYAN)
+        _run(cmd)
+        typer.secho("chezmoi update done", fg=typer.colors.GREEN)
+    except subprocess.CalledProcessError:
+        typer.secho("❌ chezmoi update failed.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
 if __name__ == "__main__":
     app()

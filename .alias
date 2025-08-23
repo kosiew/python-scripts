@@ -133,9 +133,7 @@ chezcrypt() {
 
 
 chezupdate() {
-  echo "chezmoi update in progress ...."
-  chezmoi update
-  echo "chezmoi update done"
+  run_alias_py chezupdate "$@"
 }
 
 
