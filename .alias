@@ -465,14 +465,7 @@ gsign() {
 
 # find commit hash of pr number
 gprhash() {
-  if [ $# -ne 1 ]; then
-    echo "Usage: gprhash <pr-number>"
-    return 1
-  fi
-
-  local pr="$1"
-  # Search for the commit that merged this PR
-  git log --oneline --grep="#${pr}" | awk '{print $1}'
+  run_alias_py gprhash "$1"
 }
 
 # git diff
