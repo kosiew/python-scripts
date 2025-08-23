@@ -16,6 +16,7 @@ alias llm="/Users/kosiew/GitHub/llm/.venv/bin/llm"
 alias strip-tags="/Users/kosiew/GitHub/strip-tags/.venv/bin/strip-tags" 
 alias ttok="/Users/kosiew/GitHub/ttok/.venv/bin/ttok"
 
+
 # Path to the central python alias CLI
 ALIAS_PY="$HOME/GitHub/python-scripts/alias.py"
 
@@ -135,6 +136,9 @@ chezadd() {
   run_alias_py chezadd "$@"
 }
 
+
+
+
 chezsync() {
   run_alias_py chezsync "$@"
 }
@@ -213,6 +217,7 @@ alias tickets="mvim $CLOUD/A8C/KeyboardMaestro/08_Interactions.txt"
 alias links="mvim $CLOUD/A8C/KeyboardMaestro/09_TodoLinks.txt"
 alias watches="open ~/myonedrive/Watches/watches.xlsm"
 
+
 # =======================
 # 🌍 Network & Connectivity
 # =======================
@@ -220,6 +225,7 @@ alias vpn_check="dig +short -x `curl -s 'https://en.wordpress.com/whatismyip?'`"
 alias ping8="ping 8.8.8.8"
 alias updchrome="mbrew cask upgrade chromedriver"
 alias wifi_reset="networksetup -setairportpower Wi-Fi off && networksetup -setairportpower Wi-Fi on"
+
 
 # =======================
 # 🔗 Web & Browsers
@@ -229,6 +235,8 @@ alias firefoxhl="firefox -no-remote  -P Headless -headless "
 alias chrome="/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome"
 alias chromehl="chrome --headless --dump-dom "
 alias upext='cd ~/wp-local-docker-sites/wpstore101-test/wordpress/wp-content/wc-prods && sh upext.sh && cd ~'
+
+
 
 # =======================
 # 💻 Tmux
@@ -246,6 +254,7 @@ tmux-switch() {
     fi
   fi
 }  
+
 
 tmux-new() {
   if [ -z "$1" ]; then
@@ -300,6 +309,8 @@ alias gco="git checkout \"\$(git branch | sed 's/^..//' | fzf)\""
 # g sync main
 # alias gsm="git checkout main && gsync && g cob"
 
+
+
 gsm() {
   run_alias_py gsm "$@"
 }
@@ -317,6 +328,7 @@ branches() {
     printf "%-15s %s\n ${yellow}${branch}${clear}    ${green}$description${clear}"
   done <<< "$branches"
 }
+
 
 # git delete branch local, remote
 
@@ -340,6 +352,7 @@ gcom() {
   run_alias_py gcom "$@"
 }
 
+
 gsync() {
   run_alias_py gsync "$@"
 }
@@ -358,9 +371,11 @@ gsquash() {
   run_alias_py gsquash "$@"
 }
 
+
 gggrbi() {
   run_alias_py gggrbi "$@"
 }
+
 
 gacommit() {
   run_alias_py gacommit "$@"
@@ -371,6 +386,7 @@ gacommit() {
 _gcommit_with_message() {
   run_alias_py gcommit "$@"
 }
+
 
 gcommit() {
   run_alias_py gcommit "$@"
@@ -387,9 +403,11 @@ gcopybranch() {
 
 # create branch test with commit point
 
+
 gtest() {
   run_alias_py gtest "$@"
 }
+
 
  
 gfilecommit() {
@@ -406,11 +424,13 @@ gsplit() {
   run_alias_py gsplit "$@"
 }
 
+
 # Apply a patch from the clipboard (handles heredoc-wrapped commands too)
 # Build clean patch: drop code fences, start at first 'diff --git', normalize CRLF
 gappdiff() {
   run_alias_py gappdiff "$@"
 }
+
 
 grevdiff() {
   run_alias_py grevdiff "$@"
@@ -421,6 +441,7 @@ grevdiff() {
 gadded() {
   run_alias_py gadded "$1"
 }
+
 
 # Rebase a range and add Signed-off-by to each commit.
 # Usage:
@@ -446,6 +467,7 @@ gdiff() {
   run_alias_py gdiff "$@"
 }
 
+
 gs() {
   run_alias_py gs "$@"
 }
@@ -467,9 +489,11 @@ ggm() {
   /Users/kosiew/GitHub/go_git_manager/git_branch_manager "$@"
 }
 
+
 # =======================
 # 🐍 Python & Virtual Environments
 # =======================
+
 
 pipinstall() {
   if [ $# -eq 0 ]; then
@@ -640,6 +664,7 @@ z_lsvenv() {
   ls -1 "$VENV_DIR"
 }
 
+
 # ====================
 # 🛠️ Misc Tools
 # ====================
@@ -710,6 +735,7 @@ alias find_rust_import="python /Users/kosiew/GitHub/python-scripts/rust_tools.py
 alias craft_test="python /Users/kosiew/GitHub/python-scripts/rust_tools.py craft-test "
 alias fri=find_rust_import
 
+
 rust_clippy() {
   run_alias_py rust_clippy "$@"
 }
@@ -720,9 +746,14 @@ ccheck() {
   run_alias_py ccheck "$@"
 }
 
+
+
+
 crun() {
   run_alias_py crun "$@"
 }
+
+
 
 # cargo test log
 
@@ -730,12 +761,14 @@ ctest() {
   run_alias_py ctest "$@"
 }
 
+
 # =======================
 # 🤖 LLM Tools
 # =======================
 # vi models set up for llm
 alias llm_models="vi /Users/kosiew/Library/Application\ Support/io.datasette.llm/extra-openai-models.yaml"
 alias llm_aliases="vi /Users/kosiew/Library/Application Support/io.datasette.llm/aliases.json"
+
 
 # =======================
 # 🧠 Issue Analysis Commands (refactored to Python)
@@ -805,6 +838,7 @@ itry() {
 # =======================
 # 🧰 Utility Functions
 # =======================
+
 
 findfile() {
   if [ -z "$1" ]; then
