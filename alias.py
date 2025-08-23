@@ -303,7 +303,10 @@ def prettier_toggle_cmd() -> None:
 
 
 @app.command(name="chatmodes_copy")
-def chatmodes_copy_cmd(folder_name: str = typer.Argument(..., help="Target GitHub folder name (under ~/GitHub)") ) -> None:
+def chatmodes_copy_cmd(
+    folder_name: str = typer.Argument(..., help="Target GitHub folder name (under ~/GitHub)"),
+    preserve: bool = typer.Option(False, "--preserve", help="Preserve timestamps/permissions (uses shutil.copy2)"),
+) -> None:
     """Copy chatmodes markdown files from chezmoi to the target repo's .github/chatmodes folder.
 
     Mirrors the existing shell helper:
@@ -320,6 +323,8 @@ def chatmodes_copy_cmd(folder_name: str = typer.Argument(..., help="Target GitHu
     source = home / ".local" / "share" / "chezmoi" / "GitHub" / "datafusion" / "dot_github" / "chatmodes"
 
     try:
+        import shutil
+
         target.mkdir(parents=True, exist_ok=True)
 
         md_files = list(source.glob("*.md")) if source.exists() else []
@@ -329,10 +334,16 @@ def chatmodes_copy_cmd(folder_name: str = typer.Argument(..., help="Target GitHu
 
         for f in md_files:
             dest = target / f.name
-            # copy content reliably
-            dest.write_bytes(f.read_bytes())
+            if preserve:
+                shutil.copy2(str(f), str(dest))
+            else:
+                # previous behavior: copy content
+                dest.write_bytes(f.read_bytes())
 
-        typer.secho(f"✅ Copied chatmodes to {target}", fg=typer.colors.GREEN)
+        msg = f"✅ Copied chatmodes to {target}"
+        if preserve:
+            msg += " (preserved timestamps/permissions)"
+        typer.secho(msg, fg=typer.colors.GREEN)
     except Exception as exc:
         typer.secho(f"❌ Failed to copy chatmodes: {exc}", fg=typer.colors.RED)
         raise typer.Exit(1)
@@ -446,6 +457,124 @@ def chezadd_cmd(dry_run: bool = typer.Option(False, "--dry-run", help="Show the 
         except Exception as exc:
             typer.secho(f"❌ Error processing {target_dir}: {exc}", fg=typer.colors.RED)
             continue
+
+
+@app.command(name="chezsync")
+def chezsync_cmd(dry_run: bool = typer.Option(False, "--dry-run", help="Show actions without executing them")) -> None:
+    """Sync tracked dotfiles with chezmoi: re-add, commit, and push changes in the chezmoi repo."""
+    home = Path.home()
+    chez_repo = home / ".local" / "share" / "chezmoi"
+
+    if dry_run:
+        typer.echo("Would run: chezmoi re-add")
+        typer.echo(f"Would cd to: {chez_repo}")
+        typer.echo("Would run: git add . && git commit -m 'chezmoi: re-add' && git push (if changes present)")
+        raise typer.Exit(0)
+
+    try:
+        _run(["chezmoi", "re-add"])
+    except subprocess.CalledProcessError:
+        typer.secho("❌ chezmoi re-add failed.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    if not chez_repo.exists():
+        typer.secho(f"❌ Failed to access chezmoi repo: {chez_repo}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # change working dir to chez_repo
+    cwd = Path.cwd()
+    try:
+        os.chdir(chez_repo)
+
+        # check for changes (untracked/modified or staged)
+        diff_ret = subprocess.run(["git", "diff", "--quiet"]).returncode
+        staged_ret = subprocess.run(["git", "diff", "--cached", "--quiet"]).returncode
+
+        if diff_ret == 0 and staged_ret == 0:
+            typer.secho("🔍 No changes to commit.", fg=typer.colors.YELLOW)
+            return
+
+        _run(["git", "add", "."])
+        # simple commit with message
+        msg = f"chezmoi: re-add {datetime.now().strftime('%Y-%m-%d_%H:%M')}"
+        try:
+            _run(["git", "commit", "-m", msg])
+        except subprocess.CalledProcessError:
+            # commit may fail if nothing to commit
+            typer.secho("❌ git commit failed.", fg=typer.colors.RED)
+            raise typer.Exit(1)
+
+        _run(["git", "push"])
+        typer.secho("✅ Dotfiles synced and pushed!", fg=typer.colors.GREEN)
+
+    finally:
+        os.chdir(cwd)
+
+
+@app.command(name="cdiff")
+def cdiff_cmd() -> None:
+    """Prompt to paste two clipboard contents and show a unified diff in $EDITOR.
+
+    Mirrors the shell helper which reads two pasted blocks and opens the diff in an editor.
+    """
+    import tempfile
+
+    editor = os.environ.get("EDITOR") or "vi"
+
+    # Try to use the macOS clipboard (pbpaste) when available for non-interactive use.
+    try:
+        with tempfile.NamedTemporaryFile(delete=False) as f1, tempfile.NamedTemporaryFile(delete=False) as f2:
+            if sys.platform == "darwin" and _which("pbpaste"):
+                # Use pbpaste to populate both files sequentially (user may have split content manually)
+                # First read current clipboard once into f1, then prompt for a second paste into f2.
+                proc = subprocess.run(["pbpaste"], capture_output=True, text=True)
+                f1.write(proc.stdout.encode())
+
+                # interactive second paste for convenience
+                with open("/dev/tty", "w") as tty_out, open("/dev/tty", "r") as tty_in:
+                    tty_out.write("📋 Paste second clipboard content (press Ctrl+D when done):\n")
+                    tty_out.flush()
+                    while True:
+                        line = tty_in.readline()
+                        if not line:
+                            break
+                        f2.write(line.encode())
+            else:
+                # Fallback: interactive paste for both blocks
+                with open("/dev/tty", "r") as tty_in, open("/dev/tty", "w") as tty_out:
+                    tty_out.write("📋 Paste first clipboard content (press Ctrl+D when done):\n")
+                    tty_out.flush()
+                    while True:
+                        line = tty_in.readline()
+                        if not line:
+                            break
+                        f1.write(line.encode())
+
+                    tty_out.write("📋 Paste second clipboard content (press Ctrl+D when done):\n")
+                    tty_out.flush()
+                    while True:
+                        line = tty_in.readline()
+                        if not line:
+                            break
+                        f2.write(line.encode())
+
+            f1.flush(); f2.flush()
+
+            # produce diff
+            proc = subprocess.run(["diff", "-u", f1.name, f2.name], capture_output=True, text=True)
+            diff_out = proc.stdout or ""
+
+            # open diff in editor (via stdin)
+            subprocess.run([editor, "-"], input=diff_out, text=True)
+
+    finally:
+        # Very small cleanup: try to remove temp files if they exist
+        try:
+            Path(f1.name).unlink(missing_ok=True)
+            Path(f2.name).unlink(missing_ok=True)
+        except Exception:
+            pass
+    # end of cdiff_cmd
 
 if __name__ == "__main__":
     app()
