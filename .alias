@@ -339,22 +339,7 @@ branches() {
 # git delete branch local, remote
 
 gdb() {
-  if [ $# -ne 1 ]; then
-    echo "Usage: gdb <branch-name>"
-    return 1
-  fi
-
-  local branch="$1"
-
-  echo "⚠️  WARNING: This will delete the branch '$branch' locally and remotely (origin)."
-  printf "Are you sure? (y/N): "
-  read confirm
-
-  if [[ "$confirm" =~ ^[Yy]$ ]]; then
-    git branch -d "$branch" && git push origin --delete "$branch"
-  else
-    echo "❌ Aborted: Branch '$branch' was not deleted."
-  fi
+  run_alias_py gdb "$@"
 }
 
  

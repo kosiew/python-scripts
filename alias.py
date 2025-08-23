@@ -393,6 +393,39 @@ def gsm() -> None:
 
     typer.secho("✅ Done!", fg=typer.colors.GREEN)
 
+
+@app.command(help="Delete a git branch locally and on origin after confirmation (gdb)")
+def gdb(branch: str = typer.Argument(..., help="Branch name to delete")) -> None:
+    """Delete a local branch and remove it from origin after explicit confirmation.
+
+    Mirrors the shell `gdb` helper: prompts the user with a clear warning and proceeds
+    only if the user types 'y' or 'Y'. Uses `git branch -d` and `git push origin --delete`.
+    """
+    if not branch:
+        typer.echo("Usage: gdb <branch-name>")
+        raise typer.Exit(1)
+
+    typer.secho(f"⚠️  WARNING: This will delete the branch '{branch}' locally and remotely (origin).", fg=typer.colors.YELLOW)
+    confirm = typer.prompt("Are you sure? (y/N)")
+
+    if confirm.lower() != "y":
+        typer.secho(f"❌ Aborted: Branch '{branch}' was not deleted.", fg=typer.colors.RED)
+        raise typer.Exit(0)
+
+    try:
+        _run(["git", "branch", "-d", branch])
+    except subprocess.CalledProcessError as exc:
+        typer.secho(f"❌ Failed to delete local branch '{branch}': {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    try:
+        _run(["git", "push", "origin", "--delete", branch])
+    except subprocess.CalledProcessError as exc:
+        typer.secho(f"❌ Failed to delete remote branch 'origin/{branch}': {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    typer.secho(f"✅ Deleted branch '{branch}' locally and on origin.", fg=typer.colors.GREEN)
+
 @app.command(name="chezcrypt")
 def chezcrypt_cmd(dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be encrypted without running chezmoi"),
                  targets: list[str] = typer.Argument(..., help="One or more target directories to encrypt")) -> None:
