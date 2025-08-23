@@ -56,7 +56,7 @@ Provide a **detailed tasks** to resolve the issue
 
 ---
 
-### 7. Guidelines
+## Guidelines
 
 * Do **not** generate code.
 * Keep commentary **concise, structured, and strategic**.
