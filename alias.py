@@ -176,10 +176,10 @@ def render_note(
     elif template:
         tpl_text = Path(template).read_text(encoding="utf-8")
     else:
-        # Prefer a local icask.tpl file next to this source file if present
-        local_tpl = Path(__file__).with_name("icask.tpl")
-        if local_tpl.exists():
-            tpl_text = local_tpl.read_text(encoding="utf-8")
+        # Prefer a local icask.md file next to this source file if present
+        local_md = Path(__file__).with_name("icask.md")
+        if local_md.exists():
+            tpl_text = local_md.read_text(encoding="utf-8")
         else:
             tpl_text = DEFAULT_TEMPLATE
 
