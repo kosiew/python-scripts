@@ -54,7 +54,11 @@ def _llm(flags: list[str], prompt: str, input_text: Optional[str] = None) -> str
 def _open_in_editor(path: Path, editor: Optional[str] = None) -> None:
     ed = editor or os.environ.get("EDITOR") or "mvim"
     try:
-        subprocess.run([ed, str(path)])
+        # prefer mvim with syntax off to avoid heavy highlighting in quick notes
+        if ed == "mvim":
+            subprocess.run([ed, "-c", "syntax off", str(path)])
+        else:
+            subprocess.run([ed, str(path)])
     except Exception:
         typer.secho(f"⚠️ Failed to open editor '{ed}'. File saved: {path}", fg=typer.colors.YELLOW)
 
