@@ -1,0 +1,2070 @@
+# =======================
+# 🧱 System Utilities
+# =======================
+alias ibrew='arch -x86_64 /usr/local/bin/brew'
+alias mbrew='arch -arm64e $MBREW_HOME/brew'
+alias jsc=/System/Library/Frameworks/JavaScriptCore.framework/Versions/Current/Helpers/jsc
+alias brew_python="/usr/local/opt/python@3.10/bin/python3.10"
+alias py3=brew_python
+alias va="vi ~/.alias"
+alias sa="source ~/.alias"
+alias ve="vi ~/.env"
+alias se="source ~/.env"
+alias sz="source ~/.zshrc"
+alias uvruntrace="RUST_LOG=uv=trace uv run -v "
+alias llm="/Users/kosiew/GitHub/llm/.venv/bin/llm"
+alias strip-tags="/Users/kosiew/GitHub/strip-tags/.venv/bin/strip-tags" 
+alias ttok="/Users/kosiew/GitHub/ttok/.venv/bin/ttok"
+
+
+encode_and_copy() {
+  python3 "$HOME/GitHub/python-scripts/alias.py" encode_and_copy "$1"
+}
+
+prettier_toggle() {
+  local file="$HOME/prettier-sql/.prettierrc"
+  local tmp="$HOME/tmp/.prettierrc"
+
+  mkdir -p "$HOME/tmp"
+
+  if [ -f "$file" ]; then
+    mv "$file" "$tmp"
+    echo "👋 Hiding .prettierrc → ~/tmp/"
+  elif [ -f "$tmp" ]; then
+    mv "$tmp" "$file"
+    echo "🔄 Restoring .prettierrc → ~/"
+  else
+    echo "⚠️ No .prettierrc found to hide or restore."
+  fi
+}
+
+chatmodes_copy() {
+  local folder_name="$1"
+
+  if [ -z "$folder_name" ]; then
+    echo "❗ Usage: copy_chatmodes <folder_name>"
+    return 1
+  fi
+
+  local target="/Users/kosiew/GitHub/$folder_name/.github/chatmodes"
+  local source="/Users/kosiew/.local/share/chezmoi/GitHub/datafusion/dot_github/chatmodes"
+
+  mkdir -p "$target" && \
+  cp "$source"/*.md "$target" && \
+  echo "✅ Copied chatmodes to $target"
+}
+ 
+
+fselect() {
+  mkdir -p ~/tmp
+  local file action
+  local initial_query="$1"
+
+  file=$(fd --type f --hidden --no-ignore \
+            --exclude .git/logs \
+            --exclude .git/refs \
+			--exclude node_modules \
+			--exclude .DS_Store \
+			--exclude __pycache__ \
+        | fzf --height=40% --border \
+              --preview 'bat --style=numbers --color=always {} || cat {}' \
+              --query="$initial_query") || return
+
+  echo "$file" | tee ~/tmp/.fzf_file >(pbcopy) >/dev/null
+
+  action=$(printf "open\nedit (vi)\nedit (nano)\nedit (code)\ndelete\nmove\nrename\necho path\ncancel" | \
+    fzf --prompt="Choose action for $(basename "$file"): ") || return
+
+  case "$action" in
+    open)
+      open "$file"
+      ;;
+    "edit (vi)")
+      mvim -c "syntax off" "$file"
+      ;;
+    "edit (nano)")
+      nano "$file"
+      ;;
+    "edit (code)")
+      code "$file"
+      ;;
+    delete)
+      rm "$file"
+      ;;
+    move)
+      local current_dir dest
+      current_dir=$(dirname "$file")
+      dest="$current_dir"
+      echo "Move to (destination directory):"
+      vared dest
+
+      if [ -z "$dest" ]; then
+        echo "⚠️ Move cancelled: no destination provided."
+      elif [ "$dest" = "$current_dir" ]; then
+        echo "ℹ️ Destination is the same as current. No move performed."
+      else
+        mkdir -p "$dest"
+        mv "$file" "$dest/"
+        echo "✅ Moved to $dest/"
+      fi
+      ;;
+    rename)
+      local current_name newname
+      current_name=$(basename "$file")
+      newname="$current_name"
+      echo "Rename to (new filename):"
+      vared newname
+
+      if [ -z "$newname" ]; then
+        echo "⚠️ Rename cancelled: no name provided."
+      elif [ "$newname" = "$current_name" ]; then
+        echo "ℹ️ Same name entered. No rename performed."
+      else
+        mv "$file" "$(dirname "$file")/$newname"
+        echo "✅ Renamed to $newname"
+      fi
+      ;;
+    "echo path")
+      echo "$file"
+      ;;
+    cancel)
+      echo "Action cancelled."
+      ;;
+    *)
+      echo "Unknown action: $action"
+      ;;
+  esac
+}
+
+
+
+chezcrypt() {
+  if [ $# -lt 1 ]; then
+    echo "Usage: chezcrypt <relative_path_in_chezmoi_dir> [more_dirs...]"
+    return 1
+  fi
+
+  for target_dir in "$@"; do
+    if [ ! -d "$target_dir" ]; then
+      echo "❌ Directory not found: $target_dir"
+      continue
+    fi
+
+    echo "🔒 Encrypting all files in $target_dir"
+    find "$target_dir" -type f -exec chezmoi add --encrypt {} \;
+  done
+}
+
+
+
+chezupdate() {
+  echo "chezmoi update in progress ...."
+  chezmoi update
+  echo "chezmoi update done"
+}
+
+
+chezadd() {
+  if [ $# -lt 1 ]; then
+    echo "Usage: chezadd <relative_path_to_directory> [more_dirs...]"
+    return 1
+  fi
+
+  for target_dir in "$@"; do
+    if [ ! -d "$target_dir" ]; then
+      echo "❌ Directory not found: $target_dir"
+      continue
+    fi
+
+    echo "➕ Adding all files in $target_dir to chezmoi"
+    find "$target_dir" -type f -exec chezmoi add {} \;
+  done
+}
+
+
+
+
+chezsync() {
+  echo "📝 Syncing tracked dotfiles with chezmoi..."
+  chezmoi re-add || { echo "❌ chezmoi re-add failed."; return 1; }
+
+  local chez_repo="$HOME/.local/share/chezmoi"
+  cd "$chez_repo" || { echo "❌ Failed to access chezmoi repo."; return 1; }
+
+  if ! git diff --quiet || ! git diff --cached --quiet; then
+    git add . || { echo "❌ git add failed."; return 1; }
+    _gcommit_with_message || return 1
+    echo "🚀 Pushing to remote..."
+    git push && echo "✅ Dotfiles synced and pushed!"
+  else
+    echo "🔍 No changes to commit."
+  fi
+
+  cd - > /dev/null
+}
+
+off() {
+  echo "🗂️ Running chezsync before shutdown..."
+  chezsync || { echo "❌ chezsync failed. Aborting shutdown."; return 1; }
+
+  echo -n "🔒 Proceed to shut down your Mac? [y/N] "
+  read confirm
+  if [[ "$confirm" =~ ^[Yy]$ ]]; then
+
+    echo "🍎 Initiating graceful macOS shutdown..."
+    osascript -e 'tell application "System Events" to shut down'
+  else
+    echo "❌ Shutdown cancelled."
+  fi
+}
+      
+
+cdiff() {
+  local file1
+  local file2
+
+  file1=$(mktemp)
+  file2=$(mktemp)
+
+  echo "📋 Paste first clipboard content (press Ctrl+D when done):"
+  cat > "$file1"
+
+  echo "📋 Paste second clipboard content (press Ctrl+D when done):"
+  cat > "$file2"
+
+  echo "📝 Diff output:"
+  diff -u "$file1" "$file2" | vi -
+
+  rm -f "$file1" "$file2"
+}
+ 
+ 
+clean_old_zcompdump() {
+  local current_dump="$HOME/.zcompdump"
+  local files=($HOME/.zcompdump*(N))
+  local count=0
+
+  for file in $files; do
+    if [[ "$file" != "$current_dump" ]]; then
+      rm -f "$file"
+      ((count++))
+    fi
+  done
+  if (( count > 0 )); then
+    echo "🗑️  Cleaned up $count old zcompdump file(s)!"
+  fi
+}
+
+# ====================
+# 🧠 General Tools
+# ====================
+alias nyd="npx prisma migrate dev && yd"
+alias nh="npx hardhat"
+
+copyfromurl() {
+  if [ "$#" -lt 2 ]; then
+    echo "⚠️ Usage: copyfromurl <url> <selector1> [selector2 ...]"
+    return 1
+  fi
+
+  local url="$1"
+  shift
+  echo "🌐 Fetching: $url"
+  echo "🔍 Extracting with selectors: $*"
+  
+  curl -s "$url" \
+    | strip-tags -m "$@" \
+    | pbcopy
+
+  echo "📋 Extracted content copied to clipboard!"
+}
+ 
+
+# ====================
+# 🧹 Yarn & JS Tooling
+# ====================
+# alias y="yarn"
+# alias yt="y typecheck"
+# alias ytest="y test:fast:watch"
+# alias pp="y prettier:write && y eslint . --fix --ext .js,.jsx,.ts,.tsx && g st"
+# alias gpp="yt && pp"
+# alias yac="y allchecks"
+# alias yd="y && y dev"
+# alias ydf="y && NODE_ENV=development y vite --force"
+# alias yptt="y playwright test --trace=on "
+# alias yptc="y playwright test --trace=on --project=chromium "
+# alias yptf="y playwright test --trace=on --project=firefox "
+# alias yptr="y playwright test --trace=on --workers=5 --repeat-each=5 "
+# alias pyptt="PWDEBUG=1 yptt"
+# alias pyptc="PWDEBUG=1 yptc"
+# alias cypt="CI=true yptt --project=firefox --project=chromium --workers=10 " 
+
+# =======================
+# 📝 Text Editors & Notes
+# =======================
+alias vim=mvim
+alias mvi=mvim
+alias vi=mvim
+alias journal="mvim $JOURNAL"
+alias weeknotes="mvim $WEEK_NOTES"
+alias kfm="mvim $KFM"
+alias kfm_history="mvim $KFM_HISTORY"
+alias boo="mvim $BOO"
+alias boo_history="mvim $BOO_HISTORY"
+alias inotes="mvim $INVESTMENT_JOURNAL"
+alias scrap="mvim $SCRAP"
+# alias history="mvim $HISTORY"
+alias tickets="mvim $CLOUD/A8C/KeyboardMaestro/08_Interactions.txt"
+alias links="mvim $CLOUD/A8C/KeyboardMaestro/09_TodoLinks.txt"
+alias watches="open ~/myonedrive/Watches/watches.xlsm"
+
+
+# =======================
+# 🌍 Network & Connectivity
+# =======================
+alias vpn_check="dig +short -x `curl -s 'https://en.wordpress.com/whatismyip?'`"
+alias ping8="ping 8.8.8.8"
+alias updchrome="mbrew cask upgrade chromedriver"
+alias wifi_reset="networksetup -setairportpower Wi-Fi off && networksetup -setairportpower Wi-Fi on"
+
+
+# =======================
+# 🔗 Web & Browsers
+# =======================
+alias firefox="/Applications/Firefox.app/Contents/MacOS/firefox "
+alias firefoxhl="firefox -no-remote  -P Headless -headless "
+alias chrome="/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome"
+alias chromehl="chrome --headless --dump-dom "
+alias upext='cd ~/wp-local-docker-sites/wpstore101-test/wordpress/wp-content/wc-prods && sh upext.sh && cd ~'
+
+
+
+# =======================
+# 💻 Tmux
+# =======================
+alias tmux-rename="tmux rename-session -t \$(tmux display-message -p '#S')"
+
+tmux-switch() {
+  local session
+  session=$(tmux list-sessions -F "#S" | fzf --prompt="Select tmux session: ")
+  if [ -n "$session" ]; then
+    if [ -z "$TMUX" ]; then
+      tmux attach -t "$session"
+    else
+      tmux switch-client -t "$session"
+    fi
+  fi
+}  
+
+
+tmux-new() {
+  if [ -z "$1" ]; then
+    echo "Usage: tmux-new <session-name>"
+    return 1
+  fi
+
+  if tmux has-session -t "$1" 2>/dev/null; then
+    echo "Session '$1' already exists. Attaching..."
+    tmux attach -t "$1"
+  else
+    tmux new-session -s "$1"
+  fi
+}
+
+tmux-kill-unattached() {
+  tmux list-sessions | grep -v '(attached)' | cut -d: -f1 | while read -r session; do
+    echo "Killing session: $session"
+    tmux kill-session -t "$session"
+  done
+}
+
+update_tmux_window_name() {
+  if [[ -n "$TMUX" ]]; then
+    local folder_name
+    folder_name=$(basename "$PWD")
+    printf "\033]2;%s\033\\" "$folder_name"
+  fi
+}
+
+# Run it on every directory change
+precmd() { update_tmux_window_name }
+
+# =======================
+# 🧑💻 Git & Branching
+# =======================
+alias g=/opt/homebrew/bin/git
+# To retrieve the description of the currently checked-out Git branch 
+alias gbd='BRANCH="$(git symbolic-ref --short HEAD)" && DESCRIPTION_PROPERTY="branch.${BRANCH}.description" && git config --get "$DESCRIPTION_PROPERTY"'
+# pretty-print branch information using git bi 
+alias gbi="git bi | column -ts'|'"
+alias glo="git log --since=yesterday.midnight --oneline --graph --color=always --pretty=format:'%C(auto)%h%d %s' | perl -pe 's/^((?:(?!m).)* )/sprintf(\"%3s\", \$.) . \"* \"/e'"
+alias gmp="git checkout main && git pull && git co -"
+alias gmm="git merge main"
+alias gpatch="git diff > wip.patch && git checkout ."
+alias gapplypatch="git apply < wip.patch"
+# back to how it was last commit 
+alias grestore="git restore --staged . && git restore . && git clean -fd"
+alias gbinfo="git branch --sort=-committerdate --format='%(HEAD)%(color:yellow)%(refname:short)|%(color:bold green)%(committerdate:relative)|%(color:blue)%(subject)|%(color:magenta)%(authorname)%(color:reset)' --color=always | column -ts'|'"
+
+alias gco="git checkout \"\$(git branch | sed 's/^..//' | fzf)\""
+# g sync main
+# alias gsm="git checkout main && gsync && g cob"
+
+
+
+gsm() {
+  echo "📌 Saving current branch..."
+  local cur_branch
+  cur_branch=$(git rev-parse --abbrev-ref HEAD)
+
+  echo "🔁 Switching to main branch using gcm..."
+  gcom || { echo "❌ Failed to switch to main branch."; return 1; }
+
+  echo "🔄 Syncing with upstream..."
+  gsync || { echo "❌ Failed to sync with upstream."; return 1; }
+
+  echo "↩️ Returning to previous branch: $cur_branch"
+  git checkout "$cur_branch" || { echo "❌ Failed to return to $cur_branch."; return 1; }
+
+  echo "✅ Done!"
+}
+
+branches() {
+  branch=""
+  branches=`git branch --list`
+  red='\033[0;31m'
+  yellow='\033[0;33m'
+  green='\033[0;32m'
+  clear='\033[0m'
+  while read -r branch; do
+    clean_branch_name=${branch//\*\ /}
+    description=`git config branch.$clean_branch_name.description`
+    printf "%-15s %s\n ${yellow}${branch}${clear}    ${green}$description${clear}"
+  done <<< "$branches"
+}
+
+
+# git delete branch local, remote
+
+gdb() {
+  if [ $# -ne 1 ]; then
+    echo "Usage: gdb <branch-name>"
+    return 1
+  fi
+
+  local branch="$1"
+
+  echo "⚠️  WARNING: This will delete the branch '$branch' locally and remotely (origin)."
+  printf "Are you sure? (y/N): "
+  read confirm
+
+  if [[ "$confirm" =~ ^[Yy]$ ]]; then
+    git branch -d "$branch" && git push origin --delete "$branch"
+  else
+    echo "❌ Aborted: Branch '$branch' was not deleted."
+  fi
+}
+
+ 
+
+# git diff --name-only
+# gdn() {
+#   local branch="${1:-main}"
+#   git diff --name-only "$branch" | vi -
+# }
+gdn() {
+  local branch="${1:-$(git_main_branch)}"
+  echo "🔍 Comparing against branch: $branch"
+  git diff --name-only "$branch" | vi -
+}
+
+ 
+gcom() {
+  git checkout "$(git_main_branch)"
+}
+
+
+gsync() {
+  local branch
+  branch=$(git_main_branch)
+
+  if [ -z "$branch" ]; then
+    echo "❌ Could not determine upstream main branch."
+    return 1
+  fi
+
+  echo "🌀 Syncing with upstream/$branch..."
+  git fetch upstream || return 1
+  git checkout "$branch" || return 1
+  git reset --hard "upstream/$branch"
+}
+
+# gsync() {
+#   if git remote get-url upstream >/dev/null 2>&1; then
+#     if git show-ref --verify --quiet refs/remotes/upstream/main; then
+#       DEFAULT_BRANCH="main"
+#     elif git show-ref --verify --quiet refs/remotes/upstream/master; then
+#       DEFAULT_BRANCH="master"
+#     else
+#       echo "❌ Could not detect upstream main or master branch."
+#       return 1
+#     fi
+# 
+#     echo "🌀 Syncing with upstream/$DEFAULT_BRANCH..."
+#     git fetch upstream && git reset --hard "upstream/$DEFAULT_BRANCH"
+#   else
+#     echo "❌ No 'upstream' remote found."
+#     return 1
+#   fi
+# }
+
+
+
+# Squash commit range (c1^..c2) into ONE commit using _gcommit_with_message,
+# then apply the squashed history back to a target branch in one go.
+#
+# Usage:
+#   gsquash <c1> <c2> [-t <target-branch>] [-F] [-k] [-- <message...>]
+#
+# Flags:
+#   -t, --to         Target branch to update (default: current branch)
+#   -F, --force-push Force-push target branch to its upstream after rewrite
+#   -k, --keep-temp  Keep the temporary squash branch (default: delete it)
+gsquash() {
+  # --- parse args ---
+  if [ $# -lt 2 ]; then
+    echo "Usage: gsquash <c1> <c2> [-t <target-branch>] [-F] [-k] [-- <message...>]"
+    return 1
+  fi
+  local c1="$1" c2="$2"; shift 2
+  local target="" force_push=0 keep_temp=0 msg=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -t|--to) target="$2"; shift 2;;
+      -F|--force-push) force_push=1; shift;;
+      -k|--keep-temp) keep_temp=1; shift;;
+      --) shift; msg="$*"; break;;
+      *) msg="${msg:+$msg }$1"; shift;;
+    esac
+  done
+
+  git rev-parse --git-dir >/dev/null 2>&1 || { echo "❌ Not a git repo."; return 1; }
+  git rev-parse --verify "$c1" >/dev/null 2>&1 || { echo "❌ Commit $c1 not found."; return 1; }
+  git rev-parse --verify "$c2" >/dev/null 2>&1 || { echo "❌ Commit $c2 not found."; return 1; }
+  git merge-base --is-ancestor "$c1" "$c2" || { echo "❌ $c1 is not an ancestor of $c2."; return 1; }
+
+  # Default target = current branch
+  local orig_branch target_branch
+  orig_branch=$(git rev-parse --abbrev-ref HEAD)
+  target_branch="${target:-$orig_branch}"
+
+  # Require clean state
+  if ! git diff --quiet || ! git diff --cached --quiet; then
+    echo "❌ Working tree or index not clean. Commit/stash first."
+    return 1
+  fi
+
+  # If HEAD != c2, make a temp branch at c2 to isolate the rewrite
+  local sha_head sha_c2 tmp_branch
+  sha_head=$(git rev-parse HEAD)
+  sha_c2=$(git rev-parse "$c2")
+  if [ "$sha_head" != "$sha_c2" ]; then
+    tmp_branch="squash-$(git rev-parse --short "$c2")"
+    echo "ℹ️  Creating temp branch $tmp_branch at $c2…"
+    git switch -c "$tmp_branch" "$c2" || { echo "❌ Failed to switch to temp branch."; return 1; }
+  else
+    tmp_branch="$(git rev-parse --abbrev-ref HEAD)"
+  fi
+
+  # Count commits and confirm
+  local count
+  count=$(git rev-list --count "${c1}^..${c2}")
+  if [ "${count:-0}" -lt 1 ]; then
+    echo "⚠️ Nothing to squash in ${c1}^..${c2}."
+    [ "$tmp_branch" != "$orig_branch" ] && git switch "$orig_branch" >/dev/null 2>&1
+    return 1
+  fi
+  echo "🔄 Squashing $count commit(s) in ${c1}^..${c2} into one on $tmp_branch."
+  echo -n "👉 History will be rewritten. Continue? [y/N] "
+  read _ok; [[ "$_ok" =~ ^[Yy]$ ]] || { echo "❌ Cancelled."; git switch "$orig_branch" >/dev/null 2>&1; return 1; }
+
+  # Stage the exact range as index content, then commit once
+  git reset --soft "${c1}^" || { echo "❌ reset --soft failed."; git switch "$orig_branch" >/dev/null 2>&1; return 1; }
+
+  if typeset -f _gcommit_with_message >/dev/null 2>&1; then
+    if [ -n "$msg" ]; then _gcommit_with_message "$msg" || { echo "❌ Commit failed."; return 1; }
+    else _gcommit_with_message || { echo "❌ Commit failed."; return 1; }
+    fi
+  else
+    git commit -m "${msg:-chore: squash ${c1}..${c2}}" || { echo "❌ Commit failed."; return 1; }
+  fi
+
+  local squashed_sha
+  squashed_sha=$(git rev-parse HEAD)
+  echo "✅ Created squashed commit: $squashed_sha"
+
+  # --- apply back to target branch ---
+  git show-ref --verify --quiet "refs/heads/$target_branch" || {
+    echo "❌ Target branch '$target_branch' not found."; return 1;
+  }
+
+  if git merge-base --is-ancestor "$c2" "refs/heads/$target_branch"; then
+    # Target contains c2
+    if [ "$(git rev-parse "$target_branch")" = "$sha_c2" ]; then
+      echo "🔁 Moving $target_branch to squashed commit (replacing $c2)…"
+      git switch "$target_branch" || return 1
+      git reset --hard "$squashed_sha" || return 1
+    else
+      echo "🪄 Rebasing commits after $c2 on top of squashed commit…"
+      git switch "$target_branch" || return 1
+      git rebase --onto "$squashed_sha" "$c2" || return 1
+    fi
+  else
+    # Target doesn’t contain c2 → cherry-pick the squashed change
+    echo "ℹ️  $target_branch doesn’t contain $c2; cherry-picking squashed commit…"
+    git switch "$target_branch" || return 1
+    if ! git cherry-pick "$squashed_sha"; then
+      # If cherry-pick results in an empty change (common after conflict resolution),
+      # create an empty commit with the same message to preserve history.
+      if git diff --cached --quiet && git diff --quiet; then
+        echo "⚠️ Cherry-pick produced no changes. Creating an empty commit to preserve history."
+        git commit --allow-empty -m "$(git log -1 --pretty=%B "$squashed_sha")" || return 1
+      else
+        echo "❌ Cherry-pick failed with conflicts. Resolve and run: git cherry-pick --continue"
+        return 1
+      fi
+    fi
+  fi
+
+  # Optional force-push if branch has an upstream
+  if [ $force_push -eq 1 ]; then
+    if git rev-parse --abbrev-ref --symbolic-full-name "@{u}" >/dev/null 2>&1; then
+      echo "⤴️  Force-pushing $target_branch to its upstream…"
+      git push -f || { echo "❌ Push failed."; return 1; }
+    else
+      echo "⚠️ No upstream set for $target_branch. Skipping push."
+    fi
+  fi
+
+  # Cleanup temp branch
+  if [ "$keep_temp" -eq 0 ] && [ "$tmp_branch" != "$target_branch" ] && [ "$tmp_branch" != "$orig_branch" ]; then
+    git branch -D "$tmp_branch" >/dev/null 2>&1 && echo "🧹 Deleted temp branch $tmp_branch."
+  fi
+
+  # Return user to target (or original if same)
+  if [ "$target_branch" != "$(git rev-parse --abbrev-ref HEAD)" ]; then
+    git switch "$target_branch" >/dev/null 2>&1
+  fi
+
+  echo "🎯 Done on $target_branch. (If previously pushed, consider: git push -f)"
+}
+
+
+gggrbi() {
+  local signoff_flag=""
+
+  if git config --get commit.gcommitSigned >/dev/null || [ -n "$GCOMMIT_SIGNED" ]; then
+    signoff_flag="--signoff"
+  fi
+
+  git rebase -i -r $signoff_flag "$@"
+}
+
+
+gacommit() {
+  echo "➕ Staging all changes..."
+  git add . || { echo "❌ Failed to stage changes."; return 1; }
+
+  echo "🚀 Running gcommit..."
+  gcommit "$@"
+}
+ 
+#auto commit message for staged files 
+
+_gcommit_with_message() {
+  local msg="$*"
+
+  if [ -z "$msg" ]; then
+    echo "🧠 Generating commit message from staged changes..."
+    msg=$(git diff --staged | llm -s "Generate a clear, conventional commit message for these staged changes")
+
+    if [ -z "$msg" ]; then
+      local fallback_msg="chore: commit at $(date '+%Y-%m-%d %H:%M:%S')"
+      echo "⚠️ No commit message generated. Using fallback message:"
+      msg="$fallback_msg"
+    else
+      echo "💬 AI-generated commit message:"
+    fi
+  else
+    echo "📝 Using provided commit message:"
+  fi
+
+  echo "----------------------------"
+  echo "$msg"
+  echo "----------------------------"
+
+  echo -n "👉 Proceed with commit? [y/N] "
+  read confirm
+  if [[ "$confirm" =~ ^[Yy]$ ]]; then
+    # Decide whether to sign-off
+    local commit_opts="-m"
+    if git config --get commit.gcommitSigned >/dev/null || [ -n "$GCOMMIT_SIGNED" ]; then
+      # Repo config or env variable indicates sign-off
+      git commit -s -m "$msg" && echo "✅ Commit (signed-off) completed!"
+    else
+      git commit -m "$msg" && echo "✅ Commit completed!"
+    fi
+  else
+    echo "❌ Commit cancelled."
+    return 1
+  fi
+}
+
+
+
+gcommit() {
+  _gcommit_with_message "$@"
+}
+
+# copy HEAD commit hash
+gcopyhash() {
+  local short_hash
+  short_hash=$(git rev-parse --short HEAD)
+  echo -n "$short_hash" | pbcopy
+  echo "📋 Short commit hash copied to clipboard: $short_hash"
+}
+ 
+gcopybranch() {
+  local branch
+  branch=$(git rev-parse --abbrev-ref HEAD)
+  echo -n "$branch" | pbcopy
+  echo "🌿 Current branch name copied to clipboard: $branch"
+}
+
+# create branch test with commit point
+
+
+gtest() {
+  local commit_point="$1"
+
+  if [ -z "$commit_point" ]; then
+    echo "⚠️  No commit point provided. Defaulting to latest commit (HEAD)."
+    commit_point="HEAD"
+  fi
+
+  local current_branch
+  current_branch=$(git rev-parse --abbrev-ref HEAD)
+
+  if [ "$current_branch" = "test" ]; then
+    echo "🔄 Currently on 'test' branch. Checking out original branch..."
+    g cob || return 1
+  fi
+
+  echo "🔥 Recreating 'test' branch from: $commit_point"
+  g bd test 2>/dev/null || true
+  g co -b test "$commit_point"
+}
+
+
+ 
+gfilecommit() {
+  if [ -z "$1" ]; then
+    echo "❌ No file specified. Usage: gfilecommit <file>"
+    return 1
+  fi
+
+  file="$1"
+
+  if [ ! -f "$file" ]; then
+    echo "❌ File '$file' does not exist."
+    return 1
+  fi
+
+  echo "➕ Staging $file..."
+  git add "$file" || { echo "❌ Failed to stage $file."; return 1; }
+
+  echo "🧠 Generating commit message for $file..."
+  msg=$(git diff --staged "$file" | llm -s "generate an appropriate commit message")
+
+  if [ -z "$msg" ]; then
+    echo "⚠️ No commit message generated. Aborting commit."
+    return 1
+  fi
+
+  echo "💬 Commit message: $msg"
+  git commit -m "$msg"
+  echo "✅ Committed $file successfully!"
+}
+
+# git commit unstaged files individually
+gfcommit() {
+  for file in $(git status --porcelain | awk '{print $2}'); do
+    echo "📄 Processing: $file"
+    gfilecommit "$file" || echo "⚠️ Skipped $file due to error"
+  done
+}
+ 
+
+gsplit() {
+  echo "🧨 Splitting last commit into individual file commits with AI-powered messages..."
+
+  git reset --soft HEAD~1 || { echo "❌ Failed to reset HEAD~1"; return 1; }
+  git reset || { echo "❌ Failed to unstage files"; return 1; }
+
+  gfcommit
+
+  echo "✅ Done! All files have been committed individually."
+}
+
+
+# Apply a patch from the clipboard (handles heredoc-wrapped commands too)
+
+gappdiff() {
+  emulate -L zsh
+  setopt localoptions pipefail   # no errexit here
+
+  local CHECK=""
+  if [[ "${1:-}" == "-n" || "${1:-}" == "--dry-run" ]]; then
+    CHECK="--check"
+    shift || true
+  fi
+
+  if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "❌ Not inside a git repository."; return 1
+  fi
+  if ! command -v pbpaste >/dev/null 2>&1; then
+    echo "❌ pbpaste not found (macOS required)."; return 1
+  fi
+
+  # Temp patch file
+  local tmpdir patch_path
+  tmpdir="$(mktemp -d -t gappdiff.XXXXXX)" || { echo "❌ mktemp failed"; return 1; }
+  patch_path="$tmpdir/clip.patch"
+  trap 'rm -rf "$tmpdir"' RETURN
+
+  # Build clean patch: drop code fences, start at first 'diff --git', normalize CRLF
+  if ! pbpaste | awk '
+      BEGIN { in_fence=0; started=0 }
+      /^```/ || /^~~~/ { in_fence = !in_fence; next }
+      { if (in_fence) next }
+      /^diff --git / { started=1 }
+      { if (started) print }
+    ' | tr -d "\r" > "$patch_path"
+  then
+    echo "❌ Failed to read/process clipboard."; return 1
+  fi
+
+  if ! grep -qE '^diff --git ' "$patch_path"; then
+    echo "❌ Clipboard doesn’t contain a valid patch (no 'diff --git')."; return 1
+  fi
+
+  local root; root="$(git rev-parse --show-toplevel)" || { echo "❌ Repo root not found"; return 1; }
+
+  echo "📋 Patch preview (first 20 lines):"
+  echo "----------------------------------"; head -n 20 "$patch_path"; echo "----------------------------------"
+
+  if [[ -n "$CHECK" ]]; then
+    echo "🧪 Dry-run: checking with --3way…"
+    if ( cd "$root" && git apply --3way --index $CHECK "$patch_path" ); then
+      echo "✅ Patch would apply cleanly."
+      return 0
+    else
+      echo "❌ Patch check failed."
+      echo "   Try: (cd \"$root\" && git apply --3way --reject \"$patch_path\")"
+      return 1
+    fi
+  else
+    echo "📥 Applying with --3way…"
+    if ( cd "$root" && git apply --3way --index "$patch_path" ); then
+      echo "🎉 Applied. Changes are staged."
+      return 0
+    else
+      echo "❌ Apply failed."
+      echo "   Try: (cd \"$root\" && git apply --3way --reject \"$patch_path\")"
+      return 1
+    fi
+  fi
+}
+
+
+grevdiff() {
+  echo "📋 Saving clipboard contents to rev.patch..."
+  pbpaste > rev.patch || { echo "❌ Failed to write rev.patch"; return 1; }
+
+  echo "↩️ Reversing patch..."
+  git apply -R rev.patch || { echo "❌ Failed to apply reverse patch"; rm -f rev.patch; return 1; }
+
+  echo "🧹 Cleaning up rev.patch..."
+  rm -f rev.patch
+
+  echo "✅ Patch reverted!"
+}
+
+ 
+
+gadded() {
+  if [ $# -ne 1 ]; then
+    echo "Usage: gadded <branch>"
+    return 1
+  fi
+
+  local branch="$1"
+  
+  {
+    echo "📂 Added files:"
+    git diff --name-status "${branch}...HEAD" | awk '$1 == "A" {print $2}'
+    echo
+    echo "🗑️ Deleted files:"
+    git diff --name-status "${branch}...HEAD" | awk '$1 == "D" {print $2}'
+  } | vi -
+}
+
+
+# Rebase a range and add Signed-off-by to each commit.
+# Usage:
+#   gsign <upstream|range> [--autosquash] [--rebase-merges]
+#
+# Examples:
+#   gsign main            # rebase commits since main (i.e., main..HEAD)
+#   gsign main..HEAD      # same as above
+#   gsign abc123..def456  # rebase commits in that explicit range
+#   gsign main --autosquash
+#   gsign main --rebase-merges
+gsign() {
+  # Parse flags (optional: --autosquash and/or --rebase-merges)
+  local autosquash_flag=""
+  local rebase_merges_flag=""
+
+  # Collect non-flag first arg as range/upstream
+  local arg=""
+  for a in "$@"; do
+    case "$a" in
+      --autosquash) autosquash_flag="--autosquash" ;;
+      --rebase-merges) rebase_merges_flag="--rebase-merges" ;;
+      -*)
+        echo "⚠️ Unknown option: $a" >&2
+        return 2
+        ;;
+      *)
+        if [ -z "$arg" ]; then
+          arg="$a"
+        else
+          echo "Usage: gsign <upstream|range> [--autosquash] [--rebase-merges]" >&2
+          return 2
+        fi
+        ;;
+    esac
+  done
+
+  if [ -z "$arg" ]; then
+    echo "Usage: gsign <upstream|range> [--autosquash] [--rebase-merges]" >&2
+    return 2
+  fi
+
+  # Ensure we’re in a Git repo
+  git rev-parse --git-dir >/dev/null 2>&1 || { echo "❌ Not a git repository."; return 1; }
+
+  # Refuse to start if rebase/merge in progress
+  if [ -d "$(git rev-parse --git-dir)/rebase-merge" ] || [ -d "$(git rev-parse --git-dir)/rebase-apply" ]; then
+    echo "❌ A rebase is already in progress. Resolve/abort it first."
+    return 1
+  fi
+
+  if ! git diff --quiet || ! git diff --cached --quiet; then
+    echo "❌ Working tree or index not clean. Commit or stash changes first."
+    return 1
+  fi
+
+  # Determine upstream and branch from arg
+  local upstream branch
+  if [[ "$arg" == *..* ]]; then
+    upstream="${arg%%..*}"
+    branch="${arg##*..}"
+    [ -z "$branch" ] && branch="HEAD"
+  else
+    upstream="$arg"
+    branch="HEAD"
+  fi
+
+  # Resolve to friendly names for echo
+  local cur_branch
+  cur_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)"
+
+  echo "🔧 Rebase $branch onto $upstream with --signoff ${autosquash_flag:+and --autosquash }${rebase_merges_flag:+and --rebase-merges }..."
+  echo "   Current branch: $cur_branch"
+  echo
+
+  # Run the rebase (interactive off by default; add -i if you want to edit)
+  git rebase --signoff $autosquash_flag $rebase_merges_flag "$upstream" "$branch"
+}
+
+# find commit hash of pr number
+gprhash() {
+  if [ $# -ne 1 ]; then
+    echo "Usage: gprhash <pr-number>"
+    return 1
+  fi
+
+  local pr="$1"
+  # Search for the commit that merged this PR
+  git log --oneline --grep="#${pr}" | awk '{print $1}'
+}
+
+# git diff
+gdiff() {
+  if [ $# -eq 1 ]; then
+    echo "🔍 Comparing working tree with: $1"
+    git diff "$1" | tee >(pbcopy) | vi -
+  elif [ $# -eq 2 ]; then
+    echo "🔍 Comparing: $1 ↔ $2"
+    git diff "$1" "$2" | tee >(pbcopy) | vi -
+  elif [ $# -ge 3 ]; then
+    commit="$1"
+    shift
+    echo "🔍 Comparing: $commit with specific files: $*"
+    git diff "$commit" -- "$@" | tee >(pbcopy) | vi -
+  else
+    local default_branch
+    default_branch=$(git_main_branch)
+    echo "🔍 No arguments provided. Comparing against default branch: $default_branch"
+    git diff "$default_branch" | tee >(pbcopy) | vi -
+  fi
+
+  echo "📋 Diff output copied to clipboard!"
+}
+
+
+gs() {
+  if [ $# -eq 1 ]; then
+    echo "📊 Showing diff stat between working tree and: $1"
+    git diff --stat "$1" 2>&1 | vi -
+  elif [ $# -eq 2 ]; then
+    echo "📊 Showing diff stat between: $1 ↔ $2"
+    git diff --stat "$1" "$2" 2>&1 | vi -
+  elif [ $# -eq 0 ]; then
+    local default_branch
+    default_branch=$(git_main_branch)
+    echo "📊 No arguments provided. Showing diff stat against default branch: $default_branch"
+    git diff --stat "$default_branch" 2>&1 | vi -
+  else
+    echo "Usage: gs <commit_early> [<commit_late>]"
+    return 1
+  fi
+}
+
+grmuntracked() {
+  local files
+  files=$(git ls-files --others --exclude-standard)
+
+  if [ -z "$files" ]; then
+    echo "✅ No untracked files to remove."
+    return
+  fi
+
+  echo "🚨 The following untracked files will be removed:"
+  echo "$files" | sed 's/^/   /'
+
+  read "confirm?❓ Are you sure you want to delete these files? [y/N] "
+  if [[ "$confirm" =~ ^[Yy]$ ]]; then
+    echo "$files" | xargs rm -rf
+    echo "🗑️ Untracked files deleted."
+  else
+    echo "❌ Aborted. No files were deleted."
+  fi
+}
+ 
+
+# git new branch
+
+gnb() {
+  if [ $# -ne 1 ]; then
+    echo "Usage: gnb <new-branch-name>"
+    return 1
+  fi
+
+  local branch="$1"
+
+  # If branch exists locally, delete it
+  if git show-ref --verify --quiet "refs/heads/$branch"; then
+    echo "🗑️ Deleting existing branch '$branch'..."
+    git branch -D "$branch" || {
+      echo "❌ Failed to delete branch '$branch'."
+      return 1
+    }
+  fi
+
+  git checkout -b "$branch" && \
+  git checkout dev -- AGENTS.md && \
+  git add AGENTS.md && \
+  git commit -m "UNPICK added AGENTS.md"
+}
+ 
+
+# go git manager
+ggm() {
+  /Users/kosiew/GitHub/go_git_manager/git_branch_manager "$@"
+}
+
+
+# =======================
+# 🐍 Python & Virtual Environments
+# =======================
+
+
+pipinstall() {
+  if [ $# -eq 0 ]; then
+    echo "Please provide at least one package name."
+    return 1
+  fi
+  for package in "$@"; do
+    pip install -U "$package" > /dev/null
+    if [ $? -eq 0 ]; then
+      echo "Installation of $package successful."
+    else
+      echo "Installation of $package failed."
+    fi
+  done
+}
+
+pipuninstall() {
+  if [ $# -eq 0 ]; then
+    echo "Please provide at least one package name."
+    return 1
+  fi
+  for package in "$@"; do
+    pip uninstall -y "$package" > /dev/null
+    if [ $? -eq 0 ]; then
+      echo "Uninstallation of $package successful."
+    else
+      echo "Uninstallation of $package failed."
+    fi
+  done
+}
+
+pythoninfo() {
+  echo "Python Version:"
+  python --version
+  echo -e "
+Installed Packages:"
+  pip freeze
+}
+
+create_venv() {
+  VENV_DIR=".venv"
+  if [ ! -d "$VENV_DIR" ]; then
+    echo "🛠️ Creating virtual environment..."
+    python -m venv "$VENV_DIR"
+  else
+    echo "✅ Virtual environment already exists."
+  fi
+}
+
+activate_venv() {
+  VENV_DIR=".venv"
+  if [ -f "$VENV_DIR/bin/activate" ]; then
+    echo "⚡ Activating virtual environment..."
+    source "$VENV_DIR/bin/activate"
+  else
+    echo "❌ No virtual environment found. Run create_venv first."
+    return 1
+  fi
+}
+
+upgrade_pip() {
+  echo "📦 Upgrading pip..."
+  pip install --upgrade pip
+}
+
+pip_install_requirements() {
+  if [ -f "requirements.txt" ]; then
+    echo "📄 Installing dependencies from requirements.txt..."
+    pip install -r requirements.txt
+  else
+    echo "❌ requirements.txt not found!"
+    return 1
+  fi
+}
+
+venvsetup() {
+  create_venv
+  activate_venv
+  upgrade_pip
+  pip_install_requirements
+  echo "🎉 Dev environment is ready and activated!"
+}
+ 
+z_activate_venv() {
+  if [ -d "$VENV_PATH" ]; then
+    echo "Activating virtual environment at $VENV_PATH"
+    source "$VENV_PATH/bin/activate"
+  else
+    echo "VENV_PATH not found"
+    return 1
+  fi
+}
+
+z_mkvenv() {
+  if [ -z "$1" ]; then
+    echo "Please provide a name for the virtual environment."
+    return 1
+  fi
+  VENV_NAME="$1"
+  VENV_PATH="$VENV_ROOT/$VENV_NAME"
+  ACTIVATE_SCRIPT="$(pwd)/activate_venv.sh"
+  PYTHON_VERSION=${2:-3.12}
+  PYTHON_PATH="/opt/homebrew/bin/python${PYTHON_VERSION}"
+  if [ ! -x "$PYTHON_PATH" ]; then
+    echo "Python version $PYTHON_VERSION not found at $PYTHON_PATH."
+    return 1
+  fi
+  "$PYTHON_PATH" -m venv "$VENV_PATH"
+  if [ $? -eq 0 ]; then
+    echo "Virtual environment '$VENV_NAME' created at $VENV_PATH using Python $PYTHON_VERSION."
+    source "$VENV_PATH/bin/activate"
+    python --version
+    deactivate
+    echo "#!/bin/zsh
+VENV_PATH=\"$VENV_PATH\" activate_venv" > "$ACTIVATE_SCRIPT"
+    chmod +x "$ACTIVATE_SCRIPT"
+    echo "Activation script created at $ACTIVATE_SCRIPT."
+  else
+    echo "Failed to create virtual environment '$VENV_NAME'."
+  fi
+}
+
+z_activatevenv() {
+  if [ -z "$1" ]; then
+    echo "Please provide the name of the virtual environment."
+    return 1
+  fi
+  VENV_PATH="$VENV_ROOT/$1/bin/activate"
+  if [ -f "$VENV_PATH" ]; then
+    source "$VENV_PATH"
+    echo "Activated virtual environment: $1"
+  else
+    echo "Virtual environment '$1' not found."
+  fi
+}
+
+z_rmvenv() {
+  if [ -z "$1" ]; then
+    echo "Please provide the name of the virtual environment to remove."
+    return 1
+  fi
+  VENV_NAME="$1"
+  VENV_PATH="$VENV_ROOT/$VENV_NAME"
+  if [ -d "$VENV_PATH" ]; then
+    rm -rf "$VENV_PATH"
+    echo "Virtual environment '$VENV_NAME' removed."
+  else
+    echo "Virtual environment '$VENV_NAME' not found."
+  fi
+}
+
+z_cdvenv() {
+  if [ -z "$VIRTUAL_ENV" ]; then
+    echo "No virtual environment is currently activated."
+    return 1
+  fi
+  cd "$VIRTUAL_ENV" || return 1
+  echo "Changed directory to the virtual environment: $VIRTUAL_ENV"
+}
+
+z_lsvenv() {
+  VENV_DIR="$VENV_ROOT"
+  if [ ! -d "$VENV_DIR" ]; then
+    echo "Virtual environment directory $VENV_DIR does not exist."
+    return 1
+  fi
+  echo "Listing virtual environments in $VENV_DIR:"
+  ls -1 "$VENV_DIR"
+}
+
+
+# ====================
+# 🛠️ Misc Tools
+# ====================
+alias files-to-prompt="/Users/kosiew/GitHub/files-to-prompt/.venv/bin/files-to-prompt"
+alias sklearn_label="/Users/kosiew/GitHub/gmail-ai-labeller/.venv/bin/python /Users/kosiew/GitHub/gmail-ai-labeller/gmail_labeller.py sklearn-label"
+
+alias rgrs="rg -g '*.rs' -g '*.py'" 
+
+# ====================
+# 🧪 Python Utilities
+# ====================
+alias td="python3 $PYTHON_SOURCE/todo/todo.py "
+alias bw="python3 $PYTHON_SOURCE/bv_wordpress.py "
+alias ba="python3 $PYTHON_SOURCE/bv_automattic.py "
+alias pulse="python3 $PYTHON_SOURCE/bv_speedtest.py pulse"
+alias pytest3="python3 -m pytest"
+alias open_urls="python3 $PYTHON_SOURCE/open_urls.py "
+alias say="python3 say.py say " 
+
+# ====================
+# 🐘 Postgres
+# ====================
+alias psqlstart="mbrew services start postgresql@14"
+alias psqlstop="mbrew services stop postgresql@14" 
+
+# ====================
+# 🧠 Dev Navigation
+# ====================
+alias zp="cd ~/Cloud/Source/python3"
+alias zap="cd /Users/kosiew/Library/Application\ Support/Alfred/Alfred.alfredpreferences/workflows/"
+#alias zap = "cd /Users/kosiew/Library/CloudStorage/OneDrive-Personal/A8C/Alfred/Alfred.alfredpreferences/workflows/" 
+alias lrt="eza -l -snew "
+
+# ====================
+# 🧠 Editor
+# ====================
+alias icode="code-insiders"
+
+# ====================
+# 🗣️ Audio / Whisper
+# ====================
+alias whisper="/Users/kosiew/github/whisper.cpp/main -m models/ggml-large-v2.bin"
+
+# ====================
+# 🌍 Docker UI
+# ====================
+alias openwebui="docker run -d -p 3000:8080 --add-host=host.docker.internal:host-gateway -v open-webui:/app/backend/data --name open-webui --restart always ghcr.io/open-webui/open-webui:main"
+
+mobydev() {
+  docker run --rm -it --privileged \
+    --name moby-dev \
+    -e BUILDFLAGS \
+    -e DOCKER_BUILD_PKGS \
+    -e DOCKER_DEBUG \
+    -e DOCKER_EXPERIMENTAL \
+    -e DOCKER_GITCOMMIT \
+    -e DOCKER_GRAPHDRIVER=vfs \
+    -v "$(pwd):/go/src/github.com/docker/docker" \
+    docker-dev bash
+}
+ 
+
+# =======================
+# 🦀 Rust / Cargo Tools
+# =======================
+alias c=/Users/kosiew/.cargo/bin/cargo
+alias find_rust_import="python /Users/kosiew/GitHub/python-scripts/rust_tools.py find-rust-imports "
+alias craft_test="python /Users/kosiew/GitHub/python-scripts/rust_tools.py craft-test "
+alias fri=find_rust_import
+
+
+rust_clippy() {
+  local script="ci/scripts/rust_clippy.sh"
+
+  if [ -x "$script" ]; then
+    echo "👋 running datafusion rust_clippy"
+    "$script" 2>&1 | vi -
+  else
+    echo "⚠️ $script not found or not executable."
+  fi
+}
+
+ 
+# cargo check
+ccheck() {
+  local mode=""
+  local lines=""
+  local project=""
+  local args=()
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -h)
+        mode="head"
+        lines="$2"
+        shift 2
+        ;;
+      -t)
+        mode="tail"
+        lines="$2"
+        shift 2
+        ;;
+      -p)
+        project="$2"
+        shift 2
+        ;;
+      *)
+        args+=("$1")
+        shift
+        ;;
+    esac
+  done
+
+  local cmd="c check"
+  if [[ -n "$project" ]]; then
+    cmd+=" -p $project"
+  fi
+
+  if [[ -n "$mode" && -n "$lines" ]]; then
+    eval "$cmd" 2>&1 | "$mode" -n "$lines" | vi -
+  else
+    eval "$cmd" 2>&1 | vi -
+  fi
+}
+
+
+
+
+crun() {
+  local mode=""
+  local lines=""
+  local verbose=""
+  local args=()
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -h) mode="head"; lines="$2"; shift 2;;
+      -t) mode="tail"; lines="$2"; shift 2;;
+      -v) verbose="true"; shift;;
+      --) shift; args+=("--" "$@"); break;;
+      *)  args+=("$1"); shift;;
+    esac
+  done
+
+  # default to quiet unless -v given
+  local cmd=(cargo run)
+  [[ -z "$verbose" ]] && cmd+=("-q")
+  cmd+=("${args[@]}")
+
+  if [[ -n "$verbose" ]]; then
+    if [[ -n "$mode" && -n "$lines" ]]; then
+      "${cmd[@]}" 2>&1 | "$mode" -n "$lines"
+    else
+      "${cmd[@]}" 2>&1
+    fi
+  else
+    if [[ -n "$mode" && -n "$lines" ]]; then
+      "${cmd[@]}" 2>&1 | "$mode" -n "$lines" | vim -
+    else
+      "${cmd[@]}" 2>&1 | vim -
+    fi
+  fi
+}
+
+
+
+# cargo test log
+
+ctest() {
+  local mode=""
+  local lines=""
+  local verbose=""
+  local args=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -h)
+        mode="head"; lines="$2"; shift 2;;
+      -t)
+        mode="tail"; lines="$2"; shift 2;;
+      -v)
+        verbose="true"; shift;;
+      *)
+        args+=("$1"); shift;;
+    esac
+  done
+
+  # default to -q unless verbose is requested
+  local cargo_cmd=("cargo" "test")
+  if [[ -z "$verbose" ]]; then
+    cargo_cmd+=("-q")
+  fi
+  cargo_cmd+=("${args[@]}")
+
+  if [[ -n "$verbose" ]]; then
+    if [[ -n "$mode" && -n "$lines" ]]; then
+      "${cargo_cmd[@]}" 2>&1 | $mode -n "$lines"
+    else
+      "${cargo_cmd[@]}" 2>&1
+    fi
+  else
+    if [[ -n "$mode" && -n "$lines" ]]; then
+      "${cargo_cmd[@]}" 2>&1 | $mode -n "$lines" | vi -
+    else
+      "${cargo_cmd[@]}" 2>&1 | vi -
+    fi
+  fi
+}
+
+
+# =======================
+# 🤖 LLM Tools
+# =======================
+# vi models set up for llm
+alias llm_models="vi /Users/kosiew/Library/Application\ Support/io.datasette.llm/extra-openai-models.yaml"
+alias llm_aliases="vi /Users/kosiew/Library/Application Support/io.datasette.llm/aliases.json"
+
+
+# Core helper to process an issue with a prompt and save to a file
+
+
+_generate_filename() {
+  local id="$1"
+  local title_source="$2"
+  local prefix="${3:-note}"
+
+  local short_title
+  short_title=$(llm -u -ef "$title_source" \
+    "Generate a short, kebab-case filename-style title for this GitHub issue. Avoid punctuation. No more than 8 words." \
+    | head -n1 | tr -cd '[:alnum:]-')
+
+  if [[ -z "$short_title" ]]; then
+    echo "❌ Error: Could not generate a short title." >&2
+    return 1
+  fi
+
+  local timestamp
+  timestamp=$(date +"%Y-%m-%d_%H-%M")
+  echo ~/tmp/"${id}-${prefix}-${short_title}_${timestamp}.md"
+}
+
+
+_save_and_open_file() {
+  local filepath="$1"
+  local prompt="$2"
+  local ef_arg="$3"
+
+  echo "Saving output to $filepath..."
+  if ! llm -u -ef "$ef_arg" "$prompt" > "$filepath"; then
+    echo "❌ Error: Failed to generate summary content."
+    rm -f "$filepath"
+    return 1
+  fi
+
+  echo "Opening $filepath in vi..."
+  vi -c "syntax off" "$filepath"
+}
+
+_process_issue() {
+  local url="$1"
+  local prompt="$2"
+  local prefix="${3:-note}"
+
+  echo "Extracting issue/PR number..."
+  local issue_number
+  issue_number=$(echo "$url" | awk -F'/' '{print $(NF)}')
+
+  local filepath
+  filepath=$(_generate_filename "$issue_number" "issue:$url" "$prefix") || return 1
+
+  _save_and_open_file "$filepath" "$prompt" "issue:$url"
+}
+
+_process_clipboard_issue() {
+  local prompt="$1"
+  local prefix="${2:-clip}"
+
+  echo "Generating short title from clipboard..."
+  local short_title
+  short_title=$(pbpaste | llm "Generate a short, kebab-case filename-style title for this GitHub issue. Avoid punctuation. No more than 8 words." \
+    | head -n1 | tr -cd '[:alnum:]-')
+
+  if [[ -z "$short_title" ]]; then
+    echo "❌ Error: Could not generate a short title from clipboard."
+    return 1
+  fi
+
+  local timestamp
+  timestamp=$(date +"%Y-%m-%d_%H-%M")
+  local filepath=~/tmp/"${prefix}-${short_title}_${timestamp}.md"
+
+  echo "Saving output to $filepath..."
+  if ! pbpaste | llm "$prompt" > "$filepath"; then
+    echo "❌ Error: Failed to generate summary content."
+    rm -f "$filepath"
+    return 1
+  fi
+
+  echo "Opening $filepath in vi..."
+  vi -c "syntax off" "$filepath"
+}
+
+
+
+icomment() {
+  if [ $# -ne 1 ]; then
+    echo "Usage: icomment <github-issue-url>"
+    return 1
+  fi
+  _process_issue "$1" \
+    "Add a well-thought-out comment to the issue. It should provide a new and helpful perspective, ideally grounded in the code or project direction. Keep it constructive and specific." \
+    "icomment"
+}
+
+irespond() {
+  if [ $# -ne 1 ]; then
+    echo "Usage: irespond <github-issue-url>"
+    return 1
+  fi
+  _process_issue "$1" \
+    "Respond to the latest unanswered questions directed at @kosiew. Provide thoughtful, detailed, and technically sound arguments to move the discussion forward. Be respectful and concise." \
+    "irespond"
+}
+
+isum() {
+  if [ $# -ne 1 ]; then
+    echo "Usage: isum <github-issue-url>"
+    return 1
+  fi
+  _process_issue "$1" \
+    "Summarize the issue with headings, bullet points, and add diagrams if they help clarify the concepts." \
+    "isum"
+}
+
+# summarize issue in clipboard
+isum_clip() {
+  _process_clipboard_issue \
+    "Summarize the issue with headings, bullet points, and add diagrams if they help clarify the concepts." \
+    "isum_clip"
+} 
+
+ideep() {
+  if [ $# -ne 1 ]; then
+    echo "Usage: ideep <github-issue-url>"
+    return 1
+  fi
+  _process_issue "$1" \
+    "You are a senior open-source contributor and software engineer. 
+    Given the GitHub issue linked, think deeply and suggest:
+    - How one might investigate this issue
+    - Multiple approaches to resolve it
+    - Rank the approaches by feasibility and effectiveness
+    - Provide brief rationale for the rankings
+    Format the response with clear headings and bullet points." \
+    "ideep"
+}
+
+icodex() {
+  if [ $# -ne 1 ]; then
+    echo "Usage: icodex <github-issue-url>"
+    return 1
+  fi
+  _process_issue "$1" \
+    "
+You are a **senior open-source contributor and software engineer**. Given a GitHub issue, follow the instructions based on its type:
+---
+### **A. Feature or Improvement Request**
+1. **Analyze** the issue and produce **multiple distinct solution approaches**.
+2. For **each approach**, include:
+   * **Title & Summary** – A short, clear description of the strategy.
+   * **Agent Instructions** – Specific, executable steps for an AI coding agent (e.g., Codex) to implement the solution, including:
+     * Identifying the files, directories, or modules to review.
+     * How to evaluate extending existing modules vs. creating new ones.
+     * Step-by-step implementation actions.
+3. **Ranking** – Order the approaches by **feasibility** and **effectiveness**.
+4. **Formatting Requirements**:
+   * Use a **Heading** for each approach.
+   * Use **bullet points** or **code blocks** for agent instructions.
+   * End with a **final ranked list** of approaches.
+5. **Do not** include generic investigation steps or commentary—only concrete, actionable guidance.
+---
+### **B. Bug Report**
+Produce **direct instructions** for an AI coding agent (e.g., Codex) to:
+1. **Confirm the bug** by:
+   * Creating a **script or test** in the relevant file to reproduce the issue.
+2. **Investigate** by:
+   * Identifying the root cause.
+3. **Fix** by:
+   * Modifying the relevant code sections to resolve the root cause.
+4. Focus solely on **specific, executable actions**—exclude vague steps or general debugging tips." \
+    "icodex"
+}
+
+
+# gappdiff pr diff into a new branch
+# get commit hash of diff
+# get url of issue
+# upload branch
+# run iprfb to generate prompt
+# paste prompt in codex
+
+iprfb() {
+  if [ $# -ne 2 ]; then
+    echo "Usage:"
+    echo "  iprfb <github-issue-url> <commit-hash>"
+    echo "  iprfb \"<issue-summary>\" <commit-hash>"
+    return 1
+  fi
+
+  local first="$1"
+  local hash="$2"
+
+  # Decide mode: URL vs provided summary
+  local is_url=0
+  if [[ "$first" =~ ^https?:// ]]; then
+    is_url=1
+  fi
+
+  # Build step 1 text and optional injected summary block
+  local summary_step
+  local prefilled_summary=""
+  if [ $is_url -eq 1 ]; then
+    summary_step="1. **Summarize** the issue clearly and concisely (source: ${first})."
+  else
+    summary_step="1. **Use the provided issue summary** (do not re-summarize):"
+    prefilled_summary=$'\n\n**Issue Summary (provided):**\n\n> '"${first//$'\n'/$'\n> '}"$'\n'
+  fi
+
+  # Generate a short title for logging / filenames (no network required)
+  local short_title=""
+  if command -v llm >/dev/null 2>&1; then
+    short_title="$(printf '%s' "$first" | llm -s "Condense this into a 6–10 word review title (no punctuation). If it's a URL, derive the title from the issue context.")"
+  fi
+  if [ -z "$short_title" ]; then
+    # Fallback: sanitize first arg to a compact title
+    short_title="$(printf '%s' "$first" \
+      | sed -E 's#https?://##; s#[^[:alnum:][:space:]-]##g; s/[[:space:]]+/ /g; s/^ +| +$//g' \
+      | cut -c1-60)"
+    [ -z "$short_title" ] && short_title="issue-review"
+  fi
+
+  # Compose the full prompt
+  local prompt
+  prompt=$(cat <<EOF
+**Role:** You are a **senior open-source contributor and software engineer**.
+
+**Task:** Given a GitHub issue and the associated codebase, produce a strategic and actionable review by following these steps:
+
+${summary_step}
+2. **Review the changes introduced in commit: ${hash}**
+3. **Provide constructive and actionable feedback**, focusing on:
+
+- **Consistency** — Are the changes aligned with the repository's coding conventions and structure?
+- **Redundancy** — Do the changes introduce any code duplication that could be avoided or refactored?
+- **Effectiveness** — Do the changes fully and appropriately address the described issue?
+
+Conclusion:
+- Approve
+- Approve with Suggestions (list specific follow-up actions)
+- Request Changes (list specific blocking issues)
+
+${prefilled_summary}
+EOF
+)
+
+  # ---- Execution handoff ----
+  if [ $is_url -eq 1 ] && typeset -f _process_issue >/dev/null 2>&1; then
+    # URL mode uses your existing pipe that knows how to fetch/summarize
+    _process_issue "$first" "$prompt" "iprfb:${short_title}"
+    return $?
+  fi
+
+  # Summary mode (or fallback if no _process_issue)
+  if command -v llm >/dev/null 2>&1; then
+    printf '%s' "$prompt" | llm
+  else
+    # No llm available; print the prompt to stdout so you can pipe it
+    printf '%s\n' "$prompt"
+  fi
+}
+
+
+
+ 
+# generate codex Ask prompt 
+# on how to address issue
+icask() {
+  if [ $# -lt 1 ]; then
+    echo "Usage: icask <github-issue-url> [comment]"
+    return 1
+  fi
+
+  local url="$1"
+  shift
+  local comment="$*"
+
+  # Rephrase the optional comment if possible
+  local rephrased=""
+  if [ -n "$comment" ]; then
+    if command -v llm >/dev/null 2>&1; then
+      rephrased="$(printf '%s' "$comment" | llm -s "Rephrase this reviewer note in 1–2 concise, professional sentences. Keep key constraints; avoid first person; do not quote verbatim.")"
+      # fallback if llm returns empty
+      [ -z "$rephrased" ] && rephrased="$comment"
+    else
+      rephrased="$comment"
+    fi
+  fi
+
+  # Build Step 1 line
+  local summary_step
+  if [ -n "$rephrased" ]; then
+    summary_step="1. **Summarize** the issue clearly and concisely, incorporating this reviewer note (already rephrased): ${rephrased}"
+  else
+    summary_step="1. **Summarize** the issue clearly and concisely."
+  fi
+
+  # Compose the full prompt
+  local prompt
+  prompt=$(cat <<EOF
+**Role:** You are a **senior open-source contributor and software engineer**.
+
+**Task:** Given a GitHub issue and the associated codebase, produce a strategic and actionable review by following these steps:
+
+${summary_step}
+2. **Complete the following template**, which will be used as instructions for a coding agent (e.g., Codex) to act upon.
+
+---
+
+**Instruction Template**
+
+## <Concise Description of the Issue>
+
+**Steps:**
+
+1. Review the repository to locate all areas relevant to the issue.
+2. Determine whether the solution requires modifying existing code or extending the codebase.
+3. Provide a high-level, detailed action plan for resolving the issue.
+
+---
+
+**Guidelines:**
+
+* Do **not** generate code.
+* Keep the commentary concise and strategic.
+* Focus on problem analysis and solution direction rather than implementation details.
+* Ensure the output is actionable for a coding agent without unnecessary narrative.
+EOF
+)
+
+  _process_issue "$url" "$prompt" "icask"
+}
+
+# triage issue
+
+ictriage() {
+  if [ $# -ne 1 ]; then
+    echo "Usage: ictriage <github-issue-url>"
+    return 1
+  fi
+
+  local url="$1"
+
+  description="1. **Describe** the issue clearly and concisely, with relevant information and code excerpt for investigation"
+
+  # Compose the full prompt
+  local prompt
+  prompt=$(cat <<'EOF'
+**Role:** You are a **senior open-source contributor and software engineer**.
+
+**Task:** Given a GitHub issue and the associated codebase, perform **triage**.
+
+**OUTPUT RULES (STRICT):**
+- Produce **only** the sections shown below, in this exact order and formatting.
+- After the Description, **reproduce the Steps block VERBATIM** (do not add, remove, or change words, bullets, or indentation).
+- **Do not** add any extra sections such as "Analysis", "Determination", "Conclusion", or repository-specific sub-steps.
+- Keep the Description concise.
+- The first heading (## ...) should be the issue title or the primary error message.
+
+---
+**Output Format (reproduce exactly, except fill in the Description and heading):**
+
+## <Issue Title or Primary Error Message>
+
+**Description of issue:**
+${description}
+
+**Steps:**
+
+1. Review the repository to locate all areas relevant to the issue.
+2. Provide a high-level, detailed action plan for resolving the issue.
+3. Determine whether the issue is
+	- Bug to be fixed.
+	- Feature to be implemented.
+	- Update documentation to improve user experience.
+	- Ask user for more information.
+	- Other (with justification).
+4. Provide a high-level, detailed action plan for resolving the issue.
+---
+
+EOF
+)
+
+  _process_issue "$url" "$prompt" "ictriage"
+}
+
+
+
+iask() {
+  if [ $# -lt 2 ]; then
+    echo "Usage: iask <github-issue-url> <question>"
+    return 1
+  fi
+  local url="$1"
+  shift
+  local question="$*"
+  _process_issue "$url" "$question" "iask"
+}
+
+imuse() {
+  if [ $# -ne 1 ]; then
+    echo "Usage: imuse <github-issue-url>"
+    return 1
+  fi
+  _process_issue "$1" \
+    "Reflect on this issue using clear headings, bullet points and illustrative diagrams to explore key aspects and relationships." \
+    "imuse"
+}
+
+itry() {
+  if [ "$1" = "--help" ]; then
+    echo "Usage: itry [packages...]"
+    echo "Example: itry llm sqlite-utils datasette"
+    return 0
+  fi
+  local args=()
+  for pkg in "$@"; do
+    args+=("--with" "$pkg")
+  done
+  uvx "${args[@]}" --python 3.13 ipython
+}
+
+# =======================
+# 🧰 Utility Functions
+# =======================
+
+
+findfile() {
+  if [ -z "$1" ]; then
+    echo "Usage: findfile <filename>"
+    return 1
+  fi
+
+  echo "=== Searching in Current Directory ==="
+  find . -iname "$1" 2>/dev/null
+}
+
+ 
+
+alias-find() {
+  if [ -z "$1" ]; then
+    echo "Usage: alias-find <search-term>"
+    return 1
+  fi
+
+  echo "=== Aliases ==="
+  alias | grep -i --color=always "$1"
+  
+  echo -e "\n=== Functions ==="
+  # Search function names only (including hyphens in function names)
+  declare -f | grep -E "^[a-zA-Z_][a-zA-Z0-9_-]* \(\)" | grep -i --color=always "$1"
+}
+
+ 
+check_filename() {
+  if [ -z "$1" ]; then
+    echo "Usage: $2 <filename>"
+    return 1
+  fi
+}
+
+get_commit_history() {
+  local FILENAME=$1
+  git log --oneline --pretty=format:"%h %s %Cgreen(%ar)" -- "$FILENAME"
+}
+
+git_log_copy() {
+  check_filename "$1" "git_log_copy" || return 1
+  get_commit_history "$1" | pbcopy
+  echo "Commit history copied to clipboard."
+}
+
+git_diff_commits() {
+  check_filename "$1" "git_diff_commits" || return 1
+  local FILENAME=$1
+  local COMMITS=($(pbpaste | awk '{print $1}'))
+  for COMMIT in "${COMMITS[@]}"; do
+    echo -e "
+==== Diff for commit $COMMIT ===="
+    git diff $COMMIT^! -- "$FILENAME"
+  done
+}
+
+git_log_and_diff() {
+  check_filename "$1" "git_log_and_diff" || return 1
+  local FILENAME=$1
+  git_log_copy "$FILENAME"
+  git_diff_commits "$FILENAME"
+}
+
+files_to_prompt_command() {
+  local search_term="$1"
+  shift
+  local rg_options=()
+  local file_extensions=()
+  for arg in "$@"; do
+    if [[ "$arg" == -* ]]; then
+      rg_options+=("$arg")
+    else
+      file_extensions+=("-g" "$arg")
+    fi
+  done
+  if [ ${#file_extensions[@]} -eq 0 ]; then
+    file_extensions=("-g" "*.rs" "-g" "*.py")
+  fi
+  local rg_cmd=(rg -l "${rg_options[@]}" "${file_extensions[@]}" "$search_term")
+  echo "Running command: ${rg_cmd[*]}" >&2
+  echo "" >&2
+  local files=( $(${rg_cmd[*]}) )
+  if [ ${#files[@]} -eq 0 ]; then
+    echo "No files found."
+    return 1
+  fi
+  command="files-to-prompt -c \
+"
+  for file in "${files[@]}"; do
+    command+=" ${file} \
+"
+  done
+  command+=" | vi -"
+  echo "$command"
+  echo "$command" | pbcopy
+}
+# =======================
+
+# Function: Clean tmp files older than given days (default 30)
+cleantmp() {
+  DAYS=${1:-30}
+  echo "Cleaning ~/tmp..."
+  echo "Deleting files older than $DAYS days..."
+  find ~/tmp -type f -mtime +$DAYS -print -delete
+
+  echo "Deleting empty folders (excluding vim_swap and pycache)..."
+  find ~/tmp \
+    \( -path ~/tmp/vim_swap -o -path ~/tmp/pycache \) -prune -o \
+    -type d -empty -print -delete
+
+  echo "Cleanup complete ✅"
+}
+
+# Hook: Run cleantmp once a week with macOS notification
+autoload -U add-zsh-hook
+
+weekly_tmp_cleaner() {
+  local stamp_file="$HOME/.cache/.cleantmp_last_run"
+  local now=$(date +%s)
+  local one_week=$((60 * 60 * 24 * 7))
+
+  if [[ ! -f "$stamp_file" ]]; then
+    mkdir -p "$(dirname "$stamp_file")"
+    echo "$now" > "$stamp_file"
+    cleantmp
+    notify_cleantmp
+    return
+  fi
+
+  local last_run=$(<"$stamp_file")
+  if (( now - last_run >= one_week )); then
+    cleantmp
+    notify_cleantmp
+    echo "$now" > "$stamp_file"
+  fi
+}
+
+notify_cleantmp() {
+  osascript -e 'display notification "Old files and empty folders cleaned from ~/tmp ✅" with title "Weekly Cleanup"'
+}
+
+add-zsh-hook precmd weekly_tmp_cleaner
