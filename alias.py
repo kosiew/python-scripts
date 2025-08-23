@@ -176,7 +176,12 @@ def render_note(
     elif template:
         tpl_text = Path(template).read_text(encoding="utf-8")
     else:
-        tpl_text = DEFAULT_TEMPLATE
+        # Prefer a local icask.tpl file next to this source file if present
+        local_tpl = Path(__file__).with_name("icask.tpl")
+        if local_tpl.exists():
+            tpl_text = local_tpl.read_text(encoding="utf-8")
+        else:
+            tpl_text = DEFAULT_TEMPLATE
 
     content = Template(tpl_text).safe_substitute(
         summary=summary_text, url=url, id=issue_id, timestamp=ts
@@ -2177,6 +2182,50 @@ def icask(
     
     # Use the existing issue_to_file functionality
     issue_to_file(url=url, prompt=prompt, prefix="icask", no_open=no_open, editor=editor)
+
+
+@app.command(help="Generate strategic instructions using a provided template and write to icask file")
+def icask2(
+    url: str = typer.Argument(..., help="GitHub issue/PR URL"),
+    template: Optional[str] = typer.Option(None, "--template", "-t", help="Template text or path; use '-' to read from stdin"),
+    prefix: str = typer.Option("icask", "--prefix", "-p", help="Filename prefix"),
+    no_open: bool = typer.Option(False, "--no-open", help="Do not open the file in $EDITOR"),
+    editor: Optional[str] = typer.Option(None, "--editor", "-e", help="Editor to open file"),
+):
+    """
+    Create a concise ${summary} and substitute into the provided template, then save to the same
+    auto-generated filename used by `icask`.
+    """
+    issue_id = _extract_id(url)
+    ts = _nowstamp()
+
+    # Generate concise summary (fallback text provided if LLM isn't available)
+    summary_text = _gen_summary_from_issue(url)
+    if not summary_text:
+        summary_text = "(Summary could not be auto-generated. Replace with 3–6 concise bullets: problem, scope, impact, constraints.)"
+
+    # Load template: support stdin ('-'), a file path, or raw template text
+    if template == "-":
+        tpl_text = sys.stdin.read()
+    elif template:
+        cand = Path(template)
+        if cand.exists():
+            tpl_text = cand.read_text(encoding="utf-8")
+        else:
+            tpl_text = template
+    else:
+        tpl_text = DEFAULT_TEMPLATE
+
+    # Substitute ${summary} (and other optional variables) and write file
+    content = Template(tpl_text).safe_substitute(summary=summary_text, url=url, id=issue_id, timestamp=ts)
+
+    outpath = _gen_filename(issue_id, f"issue:{url}", prefix)
+    outpath.parent.mkdir(parents=True, exist_ok=True)
+    outpath.write_text(content, encoding="utf-8")
+    typer.secho(f"✅ Wrote: {outpath}", fg=typer.colors.GREEN)
+
+    if not no_open:
+        _open_in_editor(outpath, editor)
 
 
 @app.command(help="Perform structured triage of GitHub issues with standardized output format")
