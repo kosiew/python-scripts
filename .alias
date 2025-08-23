@@ -460,71 +460,7 @@ gadded() {
 #   gsign main --autosquash
 #   gsign main --rebase-merges
 gsign() {
-  # Parse flags (optional: --autosquash and/or --rebase-merges)
-  local autosquash_flag=""
-  local rebase_merges_flag=""
-
-  # Collect non-flag first arg as range/upstream
-  local arg=""
-  for a in "$@"; do
-    case "$a" in
-      --autosquash) autosquash_flag="--autosquash" ;;
-      --rebase-merges) rebase_merges_flag="--rebase-merges" ;;
-      -*)
-        echo "⚠️ Unknown option: $a" >&2
-        return 2
-        ;;
-      *)
-        if [ -z "$arg" ]; then
-          arg="$a"
-        else
-          echo "Usage: gsign <upstream|range> [--autosquash] [--rebase-merges]" >&2
-          return 2
-        fi
-        ;;
-    esac
-  done
-
-  if [ -z "$arg" ]; then
-    echo "Usage: gsign <upstream|range> [--autosquash] [--rebase-merges]" >&2
-    return 2
-  fi
-
-  # Ensure we’re in a Git repo
-  git rev-parse --git-dir >/dev/null 2>&1 || { echo "❌ Not a git repository."; return 1; }
-
-  # Refuse to start if rebase/merge in progress
-  if [ -d "$(git rev-parse --git-dir)/rebase-merge" ] || [ -d "$(git rev-parse --git-dir)/rebase-apply" ]; then
-    echo "❌ A rebase is already in progress. Resolve/abort it first."
-    return 1
-  fi
-
-  if ! git diff --quiet || ! git diff --cached --quiet; then
-    echo "❌ Working tree or index not clean. Commit or stash changes first."
-    return 1
-  fi
-
-  # Determine upstream and branch from arg
-  local upstream branch
-  if [[ "$arg" == *..* ]]; then
-    upstream="${arg%%..*}"
-    branch="${arg##*..}"
-    [ -z "$branch" ] && branch="HEAD"
-  else
-    upstream="$arg"
-    branch="HEAD"
-  fi
-
-  # Resolve to friendly names for echo
-  local cur_branch
-  cur_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)"
-
-  echo "🔧 Rebase $branch onto $upstream with --signoff ${autosquash_flag:+and --autosquash }${rebase_merges_flag:+and --rebase-merges }..."
-  echo "   Current branch: $cur_branch"
-  echo
-
-  # Run the rebase (interactive off by default; add -i if you want to edit)
-  git rebase --signoff $autosquash_flag $rebase_merges_flag "$upstream" "$branch"
+  run_alias_py gsign "$@"
 }
 
 # find commit hash of pr number

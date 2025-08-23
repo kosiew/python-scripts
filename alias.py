@@ -1181,6 +1181,95 @@ def gadded(branch: str = typer.Argument(..., help="Branch to compare against")) 
     editor = os.environ.get("EDITOR") or "vi"
     _open_in_editor(outpath, editor)
 
+
+@app.command(help="Rebase a range and add Signed-off-by to each commit (gsign)")
+def gsign(args: List[str] = typer.Argument(None, help="Range or upstream and optional flags")) -> None:
+    """Run `git rebase --signoff [--autosquash] [--rebase-merges] <upstream> <branch>`.
+
+    Usage examples (same as shell):
+      gsign main
+      gsign main..HEAD
+      gsign abc123..def456 --autosquash --rebase-merges
+    """
+    autosquash_flag = ""
+    rebase_merges_flag = ""
+    arg = ""
+
+    # normalize args list
+    items = args or []
+    for a in items:
+        if a == "--autosquash":
+            autosquash_flag = "--autosquash"
+        elif a == "--rebase-merges":
+            rebase_merges_flag = "--rebase-merges"
+        elif a.startswith("-"):
+            typer.secho(f"⚠️ Unknown option: {a}", fg=typer.colors.YELLOW)
+            raise typer.Exit(2)
+        else:
+            if not arg:
+                arg = a
+            else:
+                typer.secho("Usage: gsign <upstream|range> [--autosquash] [--rebase-merges]", fg=typer.colors.RED)
+                raise typer.Exit(2)
+
+    if not arg:
+        typer.secho("Usage: gsign <upstream|range> [--autosquash] [--rebase-merges]", fg=typer.colors.RED)
+        raise typer.Exit(2)
+
+    # Ensure we're in a git repo
+    if _run(["git", "rev-parse", "--git-dir"], check=False).returncode != 0:
+        typer.secho("❌ Not a git repository.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Refuse to start if rebase/merge in progress
+    try:
+        git_dir = _run(["git", "rev-parse", "--git-dir"]).stdout.strip()
+    except Exception:
+        git_dir = ""
+
+    if git_dir:
+        if (Path(git_dir) / "rebase-merge").exists() or (Path(git_dir) / "rebase-apply").exists():
+            typer.secho("❌ A rebase is already in progress. Resolve/abort it first.", fg=typer.colors.RED)
+            raise typer.Exit(1)
+
+    # Ensure working tree/index clean
+    if _run(["git", "diff", "--quiet"], check=False).returncode != 0 or _run(["git", "diff", "--cached", "--quiet"], check=False).returncode != 0:
+        typer.secho("❌ Working tree or index not clean. Commit or stash changes first.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Determine upstream and branch from arg
+    upstream = ""
+    branch = ""
+    if ".." in arg:
+        upstream, branch = arg.split("..", 1)
+        if not branch:
+            branch = "HEAD"
+    else:
+        upstream = arg
+        branch = "HEAD"
+
+    try:
+        cur_branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+    except Exception:
+        cur_branch = "HEAD"
+
+    typer.secho(f"🔧 Rebase {branch} onto {upstream} with --signoff {('and --autosquash' if autosquash_flag else '')}{(' and --rebase-merges' if rebase_merges_flag else '')}...", fg=typer.colors.CYAN)
+    typer.secho(f"   Current branch: {cur_branch}", fg=typer.colors.CYAN)
+
+    # Build command
+    cmd = ["git", "rebase", "--signoff"]
+    if autosquash_flag:
+        cmd.append(autosquash_flag)
+    if rebase_merges_flag:
+        cmd.append(rebase_merges_flag)
+    cmd.extend([upstream, branch])
+
+    try:
+        _run(cmd)
+    except subprocess.CalledProcessError as exc:
+        typer.secho(f"❌ git rebase failed: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
 @app.command(name="chezcrypt")
 def chezcrypt_cmd(dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be encrypted without running chezmoi"),
                  targets: list[str] = typer.Argument(..., help="One or more target directories to encrypt")) -> None:
