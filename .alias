@@ -146,22 +146,7 @@ chezadd() {
 
 
 chezsync() {
-  echo "📝 Syncing tracked dotfiles with chezmoi..."
-  chezmoi re-add || { echo "❌ chezmoi re-add failed."; return 1; }
-
-  local chez_repo="$HOME/.local/share/chezmoi"
-  cd "$chez_repo" || { echo "❌ Failed to access chezmoi repo."; return 1; }
-
-  if ! git diff --quiet || ! git diff --cached --quiet; then
-    git add . || { echo "❌ git add failed."; return 1; }
-    _gcommit_with_message || return 1
-    echo "🚀 Pushing to remote..."
-    git push && echo "✅ Dotfiles synced and pushed!"
-  else
-    echo "🔍 No changes to commit."
-  fi
-
-  cd - > /dev/null
+  run_alias_py chezsync "$@"
 }
 
 off() {
