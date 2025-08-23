@@ -1823,7 +1823,9 @@ def chezsync_cmd(dry_run: bool = typer.Option(False, "--dry-run", help="Show act
         raise typer.Exit(0)
 
     try:
+        typer.secho("🔄 Running: chezmoi re-add", fg=typer.colors.CYAN)
         _run(["chezmoi", "re-add"])
+        typer.secho("✅ chezmoi re-add completed", fg=typer.colors.GREEN)
     except subprocess.CalledProcessError:
         typer.secho("❌ chezmoi re-add failed.", fg=typer.colors.RED)
         raise typer.Exit(1)
@@ -1835,9 +1837,11 @@ def chezsync_cmd(dry_run: bool = typer.Option(False, "--dry-run", help="Show act
     # change working dir to chez_repo
     cwd = Path.cwd()
     try:
+        typer.secho(f"📁 Changing directory to: {chez_repo}", fg=typer.colors.CYAN)
         os.chdir(chez_repo)
 
         # check for changes (untracked/modified or staged)
+        typer.secho("🔎 Checking for changes in chezmoi repo...", fg=typer.colors.CYAN)
         diff_ret = subprocess.run(["git", "diff", "--quiet"]).returncode
         staged_ret = subprocess.run(["git", "diff", "--cached", "--quiet"]).returncode
 
@@ -1845,16 +1849,21 @@ def chezsync_cmd(dry_run: bool = typer.Option(False, "--dry-run", help="Show act
             typer.secho("🔍 No changes to commit.", fg=typer.colors.YELLOW)
             return
 
+        typer.secho("➕ Staging changes (git add .)", fg=typer.colors.CYAN)
         _run(["git", "add", "."])
+
         # simple commit with message
         msg = f"chezmoi: re-add {datetime.now().strftime('%Y-%m-%d_%H:%M')}"
+        typer.secho(f"✍️  Committing changes with message: {msg}", fg=typer.colors.CYAN)
         try:
             _run(["git", "commit", "-m", msg])
+            typer.secho("✅ Commit created", fg=typer.colors.GREEN)
         except subprocess.CalledProcessError:
             # commit may fail if nothing to commit
             typer.secho("❌ git commit failed.", fg=typer.colors.RED)
             raise typer.Exit(1)
 
+        typer.secho("📤 Pushing changes to remote (git push)", fg=typer.colors.CYAN)
         _run(["git", "push"])
         typer.secho("✅ Dotfiles synced and pushed!", fg=typer.colors.GREEN)
 
