@@ -51,12 +51,19 @@ def _llm(flags: list[str], prompt: str, input_text: Optional[str] = None) -> str
     except Exception:
         return ""
 
-def _open_in_editor(path: Path, editor: Optional[str] = None) -> None:
+def _open_in_editor(path: Path, editor: Optional[str] = None, syntax_on: bool = False) -> None:
+    """Open `path` in the user's editor.
+
+    If the editor is a vim-family editor (mvim, vim, nvim, gvim) we pass a -c command to
+    turn syntax on or off depending on `syntax_on`. Other editors are invoked as-is.
+    """
     ed = editor or os.environ.get("EDITOR") or "mvim"
     try:
-        # prefer mvim with syntax off to avoid heavy highlighting in quick notes
-        if ed == "mvim":
-            subprocess.run([ed, "-c", "syntax off", str(path)])
+        # Detect vim-like editors and pass a -c command to control syntax highlighting
+        ed_base = os.path.basename(ed)
+        if ed_base in ("mvim", "vim", "nvim", "gvim"):
+            syntax_cmd = "syntax on" if syntax_on else "syntax off"
+            subprocess.run([ed, "-c", syntax_cmd, str(path)])
         else:
             subprocess.run([ed, str(path)])
     except Exception:
