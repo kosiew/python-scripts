@@ -576,22 +576,23 @@ def crun(
 
     Use -v to enable non-quiet mode. Use args after '--' in shell to forward to cargo.
     """
-    # Typer/Click may pass unknown flags into ctx.args when context_settings allow_extra_args.
-    # Combine explicit positional args with any extra args from the context so flags like
-    # --example are forwarded to cargo.
+    # Combine explicit positional args with any extra args from the context so flags
+    # like --example are forwarded to cargo run.
     items: List[str] = list(args or [])
     extra = list(getattr(ctx, "args", []) or [])
     cmd = ["cargo", "run"]
     if not verbose:
         cmd.append("-q")
-    # append forwarded args (positional args first, then any extra unknown flags)
     cmd.extend(items + extra)
 
+    typer.secho(f"🔧 Assembled command: {' '.join(cmd)}", fg=typer.colors.CYAN)
     try:
+        typer.echo("🔁 Running cargo run...")
         proc = _run(cmd, check=False)
         out = proc.stdout or ""
-    except Exception:
-        typer.secho("❌ Failed to run cargo run (is cargo installed?).", fg=typer.colors.RED)
+        typer.secho("💾 Captured cargo output.", fg=typer.colors.CYAN)
+    except Exception as exc:
+        typer.secho(f"❌ Failed to run cargo run (is cargo installed?): {exc}", fg=typer.colors.RED)
         raise typer.Exit(1)
 
     lines = out.splitlines()
@@ -605,8 +606,10 @@ def crun(
     outdir.mkdir(parents=True, exist_ok=True)
     outpath = outdir / f"crun-{_nowstamp()}.txt"
     outpath.write_text(content, encoding="utf-8")
-
+    typer.secho(f"✅ Wrote cargo output to: {outpath}", fg=typer.colors.GREEN)
+    typer.echo("🖥️ Opening output in editor...")
     _open_in_editor(outpath)
+    typer.secho("✅ crun finished.", fg=typer.colors.GREEN)
 
 
 @app.command(help="Run cargo test with optional head/tail and verbosity (ctest)")
