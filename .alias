@@ -743,14 +743,7 @@ alias fri=find_rust_import
 
 
 rust_clippy() {
-  local script="ci/scripts/rust_clippy.sh"
-
-  if [ -x "$script" ]; then
-    echo "👋 running datafusion rust_clippy"
-    "$script" 2>&1 | vi -
-  else
-    echo "⚠️ $script not found or not executable."
-  fi
+  run_alias_py rust_clippy "$@"
 }
 
  

@@ -467,6 +467,31 @@ def gnb(branch: str = typer.Argument(..., help="New branch name")) -> None:
         # non-fatal: some repos may not have AGENTS.md
         pass
 
+
+@app.command(help="Run repository-specific rust clippy script and open output (rust_clippy)")
+def rust_clippy() -> None:
+    """Run `ci/scripts/rust_clippy.sh` if present and open the captured output in $EDITOR.
+
+    Mirrors the shell helper which runs the CI script and pipes output to `vi -`.
+    """
+    script = Path("ci/scripts/rust_clippy.sh")
+    if script.exists() and os.access(script, os.X_OK):
+        typer.secho("👋 running datafusion rust_clippy", fg=typer.colors.CYAN)
+        try:
+            proc = _run([str(script)], check=False)
+            output = proc.stdout or ""
+            outdir = Path(os.path.expanduser("~/tmp"))
+            outdir.mkdir(parents=True, exist_ok=True)
+            outpath = outdir / f"rust_clippy-{_nowstamp()}.txt"
+            outpath.write_text(output, encoding="utf-8")
+            editor = os.environ.get("EDITOR") or "vi"
+            _open_in_editor(outpath, editor)
+        except Exception:
+            typer.secho("❌ Failed running rust_clippy script.", fg=typer.colors.RED)
+            raise typer.Exit(1)
+    else:
+        typer.secho("⚠️ ci/scripts/rust_clippy.sh not found or not executable.", fg=typer.colors.YELLOW)
+
 @app.command(name="encode_and_copy")
 def encode_and_copy_cmd(
     text: str = typer.Argument(..., help="Text to base64-encode and copy to clipboard")
