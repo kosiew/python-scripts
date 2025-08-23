@@ -428,6 +428,45 @@ def grmuntracked(dry_run: bool = typer.Option(False, "--dry-run", help="Show fil
     else:
         typer.secho("⚠️ Some files failed to delete; check errors above.", fg=typer.colors.YELLOW)
 
+
+@app.command(help="Create a new branch, optionally replacing an existing local branch (gnb)")
+def gnb(branch: str = typer.Argument(..., help="New branch name")) -> None:
+    """Create a new branch <branch>. If it already exists locally, delete it first.
+
+    Then check out AGENTS.md from dev into the new branch, add and commit it with message
+    'UNPICK added AGENTS.md' — mirroring the shell helper.
+    """
+    if not branch:
+        typer.secho("Usage: gnb <new-branch-name>", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # If branch exists locally, delete it
+    if _run(["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"], check=False).returncode == 0:
+        typer.secho(f"🗑️ Deleting existing branch '{branch}'...", fg=typer.colors.YELLOW)
+        try:
+            _run(["git", "branch", "-D", branch])
+        except Exception:
+            typer.secho(f"❌ Failed to delete branch '{branch}'.", fg=typer.colors.RED)
+            raise typer.Exit(1)
+
+    # Create and switch to new branch
+    try:
+        _run(["git", "checkout", "-b", branch])
+    except Exception:
+        typer.secho(f"❌ Failed to create branch '{branch}'.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Checkout AGENTS.md from dev, add and commit
+    try:
+        _run(["git", "checkout", "dev", "--", "AGENTS.md"]) 
+        _run(["git", "add", "AGENTS.md"])
+        _run(["git", "commit", "-m", "UNPICK added AGENTS.md"])
+    except subprocess.CalledProcessError:
+        typer.secho("❌ Failed to checkout or commit AGENTS.md; continue if not applicable.", fg=typer.colors.YELLOW)
+    except Exception:
+        # non-fatal: some repos may not have AGENTS.md
+        pass
+
 @app.command(name="encode_and_copy")
 def encode_and_copy_cmd(
     text: str = typer.Argument(..., help="Text to base64-encode and copy to clipboard")

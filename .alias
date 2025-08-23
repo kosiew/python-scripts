@@ -486,26 +486,7 @@ grmuntracked() {
 # git new branch
 
 gnb() {
-  if [ $# -ne 1 ]; then
-    echo "Usage: gnb <new-branch-name>"
-    return 1
-  fi
-
-  local branch="$1"
-
-  # If branch exists locally, delete it
-  if git show-ref --verify --quiet "refs/heads/$branch"; then
-    echo "🗑️ Deleting existing branch '$branch'..."
-    git branch -D "$branch" || {
-      echo "❌ Failed to delete branch '$branch'."
-      return 1
-    }
-  fi
-
-  git checkout -b "$branch" && \
-  git checkout dev -- AGENTS.md && \
-  git add AGENTS.md && \
-  git commit -m "UNPICK added AGENTS.md"
+  run_alias_py gnb "$@"
 }
  
 
