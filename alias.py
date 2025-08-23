@@ -46,7 +46,7 @@ def _llm(flags: list[str], prompt: str, input_text: Optional[str] = None) -> str
     except Exception:
         return ""
 
-def _open_in_editor(path: Path, editor: Optional[str]) -> None:
+def _open_in_editor(path: Path, editor: Optional[str] = None) -> None:
     ed = editor or os.environ.get("EDITOR") or "mvim"
     try:
         subprocess.run([ed, str(path)])
