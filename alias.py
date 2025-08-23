@@ -278,6 +278,68 @@ def gprhash(pr: str = typer.Argument(..., help="PR number, e.g. 43197")):
     for line in out.splitlines():
         typer.echo(line.split()[0])
 
+
+@app.command(help="Show git diff in various modes and copy output to clipboard (gdiff)")
+def gdiff(args: List[str] = typer.Argument(None, help="Arguments forwarded to git diff")) -> None:
+    """Mimic the shell `gdiff` helper with these modes:
+      - gdiff <ref>                # compare working tree with <ref>
+      - gdiff <a> <b>              # compare a ↔ b
+      - gdiff <commit> <files...>  # compare commit with specific files
+      - gdiff                      # compare with repo main branch
+
+    The diff is written to ~/tmp/gdiff-<ts>.patch, copied to clipboard on macOS
+    (pbcopy), and opened in $EDITOR (falls back to vi).
+    """
+    items = args or []
+
+    # Determine default branch if needed
+    def_branch = _git_main_branch() or "main"
+
+    # Build git diff command depending on args
+    if len(items) == 1:
+        typer.secho(f"🔍 Comparing working tree with: {items[0]}", fg=typer.colors.CYAN)
+        cmd = ["git", "diff", items[0]]
+    elif len(items) == 2:
+        typer.secho(f"🔍 Comparing: {items[0]} ↔ {items[1]}", fg=typer.colors.CYAN)
+        cmd = ["git", "diff", items[0], items[1]]
+    elif len(items) >= 3:
+        commit = items[0]
+        files = items[1:]
+        typer.secho(f"🔍 Comparing: {commit} with specific files: {' '.join(files)}", fg=typer.colors.CYAN)
+        cmd = ["git", "diff", commit, "--", *files]
+    else:
+        typer.secho(f"🔍 No arguments provided. Comparing against default branch: {def_branch}", fg=typer.colors.CYAN)
+        cmd = ["git", "diff", def_branch]
+
+    # Run git diff and capture output
+    try:
+        proc = _run(cmd, check=False)
+        diff_text = proc.stdout or ""
+    except Exception:
+        typer.secho("❌ git diff failed or not a repository.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Ensure tmp directory exists and write file
+    outdir = Path(os.path.expanduser("~/tmp"))
+    outdir.mkdir(parents=True, exist_ok=True)
+    outpath = outdir / f"gdiff-{_nowstamp()}.patch"
+    outpath.write_text(diff_text, encoding="utf-8")
+
+    # Copy to clipboard on macOS if pbcopy present
+    if sys.platform == "darwin" and _which("pbcopy"):
+        try:
+            p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
+            p.communicate(diff_text.encode())
+            typer.secho("📋 Diff output copied to clipboard!", fg=typer.colors.GREEN)
+        except Exception:
+            typer.secho("⚠️ Failed to copy to clipboard.", fg=typer.colors.YELLOW)
+    else:
+        typer.echo("📋 Diff output saved to: " + str(outpath))
+
+    # Open in editor
+    editor = os.environ.get("EDITOR") or "vi"
+    _open_in_editor(outpath, editor)
+
 @app.command(name="encode_and_copy")
 def encode_and_copy_cmd(
     text: str = typer.Argument(..., help="Text to base64-encode and copy to clipboard")
