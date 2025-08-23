@@ -2183,7 +2183,6 @@ def icask(
 @app.command(help="Generate strategic instructions using a provided template and write to icask file")
 def icask2(
     url: str = typer.Argument(..., help="GitHub issue/PR URL"),
-    template: Optional[str] = typer.Option(None, "--template", "-t", help="Template text or path; use '-' to read from stdin"),
     prefix: str = typer.Option("icask", "--prefix", "-p", help="Filename prefix"),
     no_open: bool = typer.Option(False, "--no-open", help="Do not open the file in $EDITOR"),
     editor: Optional[str] = typer.Option(None, "--editor", "-e", help="Editor to open file"),
@@ -2200,23 +2199,13 @@ def icask2(
     if not summary_text:
         summary_text = "(Summary could not be auto-generated. Replace with 3–6 concise bullets: problem, scope, impact, constraints.)"
 
-    # Load template: support stdin ('-'), a file path, or raw template text
-    if template == "-":
-        tpl_text = sys.stdin.read()
-    elif template:
-        cand = Path(template)
-        if cand.exists():
-            tpl_text = cand.read_text(encoding="utf-8")
-        else:
-            tpl_text = template
+    # Always use the local icask.md next to this source file; error if missing
+    local_md = Path(__file__).with_name("icask.md")
+    if local_md.exists():
+        tpl_text = local_md.read_text(encoding="utf-8")
     else:
-        # Prefer a local icask.md file next to this source file if present; else error
-        local_md = Path(__file__).with_name("icask.md")
-        if local_md.exists():
-            tpl_text = local_md.read_text(encoding="utf-8")
-        else:
-            typer.secho("❌ Template 'icask.md' not found next to alias.py and no --template provided. Please create icask.md or pass --template <path|text>.", fg=typer.colors.RED)
-            raise typer.Exit(2)
+        typer.secho("❌ Template 'icask.md' not found next to alias.py. Please create icask.md.", fg=typer.colors.RED)
+        raise typer.Exit(2)
 
     # Substitute ${summary} (and other optional variables) and write file
     content = Template(tpl_text).safe_substitute(summary=summary_text, url=url, id=issue_id, timestamp=ts)
@@ -2233,7 +2222,6 @@ def icask2(
 @app.command(help="Generate a structured triage file using a provided template and write to ictriage file")
 def ictriage2(
     url: str = typer.Argument(..., help="GitHub issue/PR URL"),
-    template: Optional[str] = typer.Option(None, "--template", "-t", help="Template text or path; use '-' to read from stdin"),
     prefix: str = typer.Option("ictriage", "--prefix", "-p", help="Filename prefix"),
     no_open: bool = typer.Option(False, "--no-open", help="Do not open the file in $EDITOR"),
     editor: Optional[str] = typer.Option(None, "--editor", "-e", help="Editor to open file"),
@@ -2249,25 +2237,13 @@ def ictriage2(
     if not summary_text:
         summary_text = "(Summary could not be auto-generated. Replace with 3–6 concise bullets: problem, scope, impact, constraints.)"
 
-    # Load template: support stdin ('-'), a file path, or raw template text
-    if template == "-":
-        tpl_text = sys.stdin.read()
-    elif template:
-        cand = Path(template)
-        if cand.exists():
-            tpl_text = cand.read_text(encoding="utf-8")
-        else:
-            tpl_text = template
+    # Always use the local ictriage.md next to this source file; error if missing
+    local_md = Path(__file__).with_name("ictriage.md")
+    if local_md.exists():
+        tpl_text = local_md.read_text(encoding="utf-8")
     else:
-        # Prefer a local ictriage.md file next to this source file if present
-        local_md = Path(__file__).with_name("ictriage.md")
-        if local_md.exists():
-            tpl_text = local_md.read_text(encoding="utf-8")
-        else:
-            typer.secho("❌ Template 'ictriage.md' not found next to alias.py and no --template provided. Please create ictriage.md or pass --template <path|text>.", fg=typer.colors.RED)
-            raise typer.Exit(2)
-        
-    # No local fallback provided; require ictriage.md or --template
+        typer.secho("❌ Template 'ictriage.md' not found next to alias.py. Please create ictriage.md.", fg=typer.colors.RED)
+        raise typer.Exit(2)
 
     # Substitute and write
     content = Template(tpl_text).safe_substitute(summary=summary_text, url=url, id=issue_id, timestamp=ts)
