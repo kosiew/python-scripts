@@ -842,19 +842,25 @@ def gdb(branch: str = typer.Argument(..., help="Branch name to delete")) -> None
         typer.secho(f"❌ Aborted: Branch '{branch}' was not deleted.", fg=typer.colors.RED)
         raise typer.Exit(0)
 
+    # Delete local branch
+    typer.secho(f"🗑️ Deleting local branch: {branch}", fg=typer.colors.CYAN)
     try:
         _run(["git", "branch", "-d", branch])
+        typer.secho(f"✅ Local branch '{branch}' deleted.", fg=typer.colors.GREEN)
     except subprocess.CalledProcessError as exc:
         typer.secho(f"❌ Failed to delete local branch '{branch}': {exc}", fg=typer.colors.RED)
         raise typer.Exit(1)
 
+    # Delete remote branch
+    typer.secho(f"📤 Deleting remote branch: origin/{branch}", fg=typer.colors.CYAN)
     try:
         _run(["git", "push", "origin", "--delete", branch])
+        typer.secho(f"✅ Remote branch 'origin/{branch}' deleted.", fg=typer.colors.GREEN)
     except subprocess.CalledProcessError as exc:
         typer.secho(f"❌ Failed to delete remote branch 'origin/{branch}': {exc}", fg=typer.colors.RED)
         raise typer.Exit(1)
 
-    typer.secho(f"✅ Deleted branch '{branch}' locally and on origin.", fg=typer.colors.GREEN)
+    typer.secho(f"🎉 Deleted branch '{branch}' locally and on origin.", fg=typer.colors.GREEN)
 
 
 @app.command(help="Show files changed compared to a branch (gdn)")
