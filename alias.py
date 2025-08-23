@@ -348,6 +348,51 @@ def chatmodes_copy_cmd(
         typer.secho(f"❌ Failed to copy chatmodes: {exc}", fg=typer.colors.RED)
         raise typer.Exit(1)
 
+
+@app.command(help="Switch to main, sync, and return to the previous branch (gsm)")
+def gsm() -> None:
+    """Save current branch, run `gcom` to switch to main, run `gsync`, then return to the saved branch.
+
+    Mirrors the shell helper: prints progress and exits with non-zero on failures.
+    """
+    try:
+        # determine current branch
+        proc = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+        cur_branch = proc.stdout.strip()
+    except Exception:
+        typer.secho("❌ Not a git repo or cannot determine current branch.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    typer.echo("📌 Saving current branch...")
+
+    typer.echo("🔁 Switching to main branch using gcom...")
+    try:
+        _run(["gcom"])
+    except Exception:
+        typer.secho("❌ Failed to switch to main branch.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    typer.echo("🔄 Syncing with upstream...")
+    try:
+        _run(["gsync"])
+    except Exception:
+        typer.secho("❌ Failed to sync with upstream.", fg=typer.colors.RED)
+        # attempt to return to original branch
+        try:
+            _run(["git", "checkout", cur_branch])
+        except Exception:
+            pass
+        raise typer.Exit(1)
+
+    typer.echo(f"↩️ Returning to previous branch: {cur_branch}")
+    try:
+        _run(["git", "checkout", cur_branch])
+    except Exception:
+        typer.secho(f"❌ Failed to return to {cur_branch}.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    typer.secho("✅ Done!", fg=typer.colors.GREEN)
+
 @app.command(name="chezcrypt")
 def chezcrypt_cmd(dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be encrypted without running chezmoi"),
                  targets: list[str] = typer.Argument(..., help="One or more target directories to encrypt")) -> None:
