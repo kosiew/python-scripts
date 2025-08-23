@@ -951,6 +951,7 @@ def gsquash(
 
     Mirrors the shell `gsquash` helper. Be careful: this rewrites history.
     """
+    typer.secho(f"🚀 Starting gsquash: {c1}..{c2} -> {to or '(current)'}", fg=typer.colors.CYAN)
     # Basic validations
     try:
         _run(["git", "rev-parse", "--git-dir"])
@@ -958,6 +959,7 @@ def gsquash(
         typer.secho("❌ Not a git repo.", fg=typer.colors.RED)
         raise typer.Exit(1)
 
+    typer.echo("🔍 Verifying commits exist...")
     # verify commits exist
     if _run(["git", "rev-parse", "--verify", c1], check=False).returncode != 0:
         typer.secho(f"❌ Commit {c1} not found.", fg=typer.colors.RED)
@@ -966,6 +968,7 @@ def gsquash(
         typer.secho(f"❌ Commit {c2} not found.", fg=typer.colors.RED)
         raise typer.Exit(1)
 
+    typer.echo("🔗 Checking ancestor relationship...")
     # ensure c1 is ancestor of c2
     if _run(["git", "merge-base", "--is-ancestor", c1, c2], check=False).returncode != 0:
         typer.secho(f"❌ {c1} is not an ancestor of {c2}.", fg=typer.colors.RED)
@@ -974,6 +977,7 @@ def gsquash(
     orig_branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
     target_branch = to or orig_branch
 
+    typer.echo("🧹 Ensuring working tree and index are clean...")
     # Require clean state
     if _run(["git", "diff", "--quiet"], check=False).returncode != 0 or _run(["git", "diff", "--cached", "--quiet"], check=False).returncode != 0:
         typer.secho("❌ Working tree or index not clean. Commit/stash first.", fg=typer.colors.RED)
@@ -987,11 +991,13 @@ def gsquash(
         typer.secho(f"ℹ️  Creating temp branch {tmp_branch} at {c2}…", fg=typer.colors.CYAN)
         try:
             _run(["git", "switch", "-c", tmp_branch, c2])
+            typer.secho(f"✅ Created temp branch {tmp_branch}", fg=typer.colors.GREEN)
         except Exception:
             typer.secho("❌ Failed to switch to temp branch.", fg=typer.colors.RED)
             raise typer.Exit(1)
     else:
         tmp_branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+        typer.secho(f"ℹ️  Using current branch as temp: {tmp_branch}", fg=typer.colors.CYAN)
 
     # Count commits
     proc = _run(["git", "rev-list", "--count", f"{c1}^..{c2}"], check=False)
@@ -1009,8 +1015,10 @@ def gsquash(
         raise typer.Exit(1)
 
     # Stage the exact range as index content, then commit once
+    typer.echo("⚙️ Staging range into index (reset --soft)...")
     try:
         _run(["git", "reset", "--soft", f"{c1}^"])
+        typer.secho("✅ Range staged.", fg=typer.colors.GREEN)
     except Exception:
         typer.secho("❌ reset --soft failed.", fg=typer.colors.RED)
         _run(["git", "switch", orig_branch], check=False)
@@ -1018,8 +1026,10 @@ def gsquash(
 
     # Commit
     commit_msg = message or f"chore: squash {c1}..{c2}"
+    typer.echo("📝 Creating squashed commit...")
     try:
         _run(["git", "commit", "-m", commit_msg])
+        typer.secho("✅ Squashed commit created.", fg=typer.colors.GREEN)
     except Exception:
         typer.secho("❌ Commit failed.", fg=typer.colors.RED)
         raise typer.Exit(1)
@@ -1028,6 +1038,7 @@ def gsquash(
     typer.secho(f"✅ Created squashed commit: {squashed_sha}", fg=typer.colors.GREEN)
 
     # apply back to target branch
+    typer.echo(f"🔁 Applying squashed commit to target branch: {target_branch}")
     if _run(["git", "show-ref", "--verify", f"refs/heads/{target_branch}"], check=False).returncode != 0:
         typer.secho(f"❌ Target branch '{target_branch}' not found.", fg=typer.colors.RED)
         raise typer.Exit(1)
@@ -1035,15 +1046,18 @@ def gsquash(
     # Does target contain c2?
     if _run(["git", "merge-base", "--is-ancestor", c2, f"refs/heads/{target_branch}"], check=False).returncode == 0:
         # Target contains c2
-        if _run(["git", "rev-parse", target_branch]).stdout.strip() == sha_c2:
+        _cur_target_sha = _run(["git", "rev-parse", target_branch]).stdout.strip()
+        if _cur_target_sha == sha_c2:
             typer.secho(f"🔁 Moving {target_branch} to squashed commit (replacing {c2})…", fg=typer.colors.CYAN)
             _run(["git", "switch", target_branch])
             _run(["git", "reset", "--hard", squashed_sha])
+            typer.secho(f"✅ {target_branch} reset to {squashed_sha}", fg=typer.colors.GREEN)
         else:
-            typer.secho("🪄 Rebasing commits after {c2} on top of squashed commit…", fg=typer.colors.CYAN)
+            typer.secho(f"🪄 Rebasing commits after {c2} on top of squashed commit…", fg=typer.colors.CYAN)
             _run(["git", "switch", target_branch])
             try:
                 _run(["git", "rebase", "--onto", squashed_sha, c2])
+                typer.secho("✅ Rebase onto squashed commit succeeded.", fg=typer.colors.GREEN)
             except Exception:
                 typer.secho("❌ Rebase failed.", fg=typer.colors.RED)
                 raise typer.Exit(1)
@@ -1053,6 +1067,7 @@ def gsquash(
         _run(["git", "switch", target_branch])
         try:
             _run(["git", "cherry-pick", squashed_sha])
+            typer.secho("✅ Cherry-pick succeeded.", fg=typer.colors.GREEN)
         except Exception:
             # If cherry-pick produces no changes, create empty commit with same message
             if _run(["git", "diff", "--cached", "--quiet"], check=False).returncode == 0 and _run(["git", "diff", "--quiet"], check=False).returncode == 0:
@@ -1060,6 +1075,7 @@ def gsquash(
                 # Get original message
                 orig_msg = _run(["git", "log", "-1", "--pretty=%B", squashed_sha]).stdout.strip()
                 _run(["git", "commit", "--allow-empty", "-m", orig_msg])
+                typer.secho("✅ Empty commit created.", fg=typer.colors.GREEN)
             else:
                 typer.secho("❌ Cherry-pick failed with conflicts. Resolve and run: git cherry-pick --continue", fg=typer.colors.RED)
                 raise typer.Exit(1)
@@ -1071,6 +1087,7 @@ def gsquash(
             typer.secho(f"⤴️  Force-pushing {target_branch} to its upstream…", fg=typer.colors.CYAN)
             try:
                 _run(["git", "push", "-f"])
+                typer.secho("✅ Force-push completed.", fg=typer.colors.GREEN)
             except Exception:
                 typer.secho("❌ Push failed.", fg=typer.colors.RED)
                 raise typer.Exit(1)
