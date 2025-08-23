@@ -558,10 +558,13 @@ def ccheck(
     content = "\n".join(lines)
     outdir = Path(os.path.expanduser("~/tmp"))
     outdir.mkdir(parents=True, exist_ok=True)
-    outpath = outdir / f"ccheck-{_nowstamp()}.txt"
+    branch_clean = _get_git_branch()
+    outpath = outdir / f"ccheck-{branch_clean}-{_nowstamp()}.txt"
     outpath.write_text(content, encoding="utf-8")
-
+    typer.secho(f"✅ Wrote cargo check output to: {outpath}", fg=typer.colors.GREEN)
+    typer.echo("🖥️ Opening output in editor...")
     _open_in_editor(outpath)
+    typer.secho("✅ ccheck finished.", fg=typer.colors.GREEN)
 
 
 @app.command(help="Run cargo run with optional head/tail and verbosity (crun)", context_settings={"ignore_unknown_options": True, "allow_extra_args": True})
