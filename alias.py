@@ -567,7 +567,7 @@ def ccheck(
 @app.command(help="Run cargo run with optional head/tail and verbosity (crun)", context_settings={"ignore_unknown_options": True, "allow_extra_args": True})
 def crun(
     ctx: typer.Context,
-    args: List[str] = typer.Argument(None, nargs=-1, help="Arguments passed to cargo run; use '--' to separate"),
+    args: Optional[List[str]] = typer.Argument(None, help="Arguments passed to cargo run; use '--' to separate"),
     head: Optional[int] = typer.Option(None, "-h", help="Show only first N lines"),
     tail: Optional[int] = typer.Option(None, "-t", help="Show only last N lines"),
     verbose: bool = typer.Option(False, "-v", help="Run in verbose mode"),
