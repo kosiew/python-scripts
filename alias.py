@@ -564,9 +564,10 @@ def ccheck(
     _open_in_editor(outpath)
 
 
-@app.command(help="Run cargo run with optional head/tail and verbosity (crun)")
+@app.command(help="Run cargo run with optional head/tail and verbosity (crun)", context_settings={"ignore_unknown_options": True, "allow_extra_args": True})
 def crun(
-    args: List[str] = typer.Argument(None, help="Arguments passed to cargo run; use '--' to separate"),
+    ctx: typer.Context,
+    args: List[str] = typer.Argument(None, nargs=-1, help="Arguments passed to cargo run; use '--' to separate"),
     head: Optional[int] = typer.Option(None, "-h", help="Show only first N lines"),
     tail: Optional[int] = typer.Option(None, "-t", help="Show only last N lines"),
     verbose: bool = typer.Option(False, "-v", help="Run in verbose mode"),
@@ -575,13 +576,16 @@ def crun(
 
     Use -v to enable non-quiet mode. Use args after '--' in shell to forward to cargo.
     """
-    items = args or []
-
+    # Typer/Click may pass unknown flags into ctx.args when context_settings allow_extra_args.
+    # Combine explicit positional args with any extra args from the context so flags like
+    # --example are forwarded to cargo.
+    items: List[str] = list(args or [])
+    extra = list(getattr(ctx, "args", []) or [])
     cmd = ["cargo", "run"]
     if not verbose:
         cmd.append("-q")
-    # append forwarded args
-    cmd.extend(items)
+    # append forwarded args (positional args first, then any extra unknown flags)
+    cmd.extend(items + extra)
 
     try:
         proc = _run(cmd, check=False)
