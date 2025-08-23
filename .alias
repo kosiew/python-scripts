@@ -23,7 +23,7 @@ ALIAS_PY="$HOME/GitHub/python-scripts/alias.py"
 # Helper to run a subcommand of alias.py with arguments. Keeps wrappers DRY.
 run_alias_py() {
   if [ -x "$ALIAS_PY" ] || [ -f "$ALIAS_PY" ]; then
-    python3 "$ALIAS_PY" "$@"
+  /usr/local/bin/python "$ALIAS_PY" "$@"
   else
     echo "❌ alias CLI not found at $ALIAS_PY" >&2
     return 1
@@ -318,20 +318,7 @@ alias gco="git checkout \"\$(git branch | sed 's/^..//' | fzf)\""
 
 
 gsm() {
-  echo "📌 Saving current branch..."
-  local cur_branch
-  cur_branch=$(git rev-parse --abbrev-ref HEAD)
-
-  echo "🔁 Switching to main branch using gcm..."
-  gcom || { echo "❌ Failed to switch to main branch."; return 1; }
-
-  echo "🔄 Syncing with upstream..."
-  gsync || { echo "❌ Failed to sync with upstream."; return 1; }
-
-  echo "↩️ Returning to previous branch: $cur_branch"
-  git checkout "$cur_branch" || { echo "❌ Failed to return to $cur_branch."; return 1; }
-
-  echo "✅ Done!"
+  run_alias_py gsm "$@"
 }
 
 branches() {
