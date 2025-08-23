@@ -174,6 +174,19 @@ def _render_and_write(issue_id: str, url: str, prefix: str, tpl_text: str, summa
         _open_in_editor(outpath, editor)
     return outpath
 
+
+def _get_git_branch() -> str:
+    """Return the current git branch name or 'unknown' if it cannot be determined."""
+    branch = "unknown"
+    try:
+        proc = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], check=False)
+        b = (proc.stdout or "").strip()
+        if b:
+            branch = b
+    except Exception:
+        branch = "unknown"
+    return re.sub(r"[^A-Za-z0-9\-_]", "-", branch)
+
 # -------------------------
 # Commands
 # -------------------------
@@ -318,10 +331,13 @@ def gdiff(args: List[str] = typer.Argument(None, help="Arguments forwarded to gi
         typer.secho("❌ git diff failed or not a repository.", fg=typer.colors.RED)
         raise typer.Exit(1)
 
-    # Ensure tmp directory exists and write file
+    # Ensure tmp directory exists and write file; include current branch in filename
     outdir = Path(os.path.expanduser("~/tmp"))
     outdir.mkdir(parents=True, exist_ok=True)
-    outpath = outdir / f"gdiff-{_nowstamp()}.patch"
+
+    branch_clean = _get_git_branch()
+
+    outpath = outdir / f"gdiff-{branch_clean}-{_nowstamp()}.patch"
     outpath.write_text(diff_text, encoding="utf-8")
 
     # Copy to clipboard on macOS if pbcopy present
