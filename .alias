@@ -776,91 +776,9 @@ alias llm_models="vi /Users/kosiew/Library/Application\ Support/io.datasette.llm
 alias llm_aliases="vi /Users/kosiew/Library/Application Support/io.datasette.llm/aliases.json"
 
 
-# Core helper to process an issue with a prompt and save to a file
-
-
-_generate_filename() {
-  local id="$1"
-  local title_source="$2"
-  local prefix="${3:-note}"
-
-  local short_title
-  short_title=$(llm -u -ef "$title_source" \
-    "Generate a short, kebab-case filename-style title for this GitHub issue. Avoid punctuation. No more than 8 words." \
-    | head -n1 | tr -cd '[:alnum:]-')
-
-  if [[ -z "$short_title" ]]; then
-    echo "❌ Error: Could not generate a short title." >&2
-    return 1
-  fi
-
-  local timestamp
-  timestamp=$(date +"%Y-%m-%d_%H-%M")
-  echo ~/tmp/"${id}-${prefix}-${short_title}_${timestamp}.md"
-}
-
-
-_save_and_open_file() {
-  local filepath="$1"
-  local prompt="$2"
-  local ef_arg="$3"
-
-  echo "Saving output to $filepath..."
-  if ! llm -u -ef "$ef_arg" "$prompt" > "$filepath"; then
-    echo "❌ Error: Failed to generate summary content."
-    rm -f "$filepath"
-    return 1
-  fi
-
-  echo "Opening $filepath in vi..."
-  vi -c "syntax off" "$filepath"
-}
-
-_process_issue() {
-  local url="$1"
-  local prompt="$2"
-  local prefix="${3:-note}"
-
-  echo "Extracting issue/PR number..."
-  local issue_number
-  issue_number=$(echo "$url" | awk -F'/' '{print $(NF)}')
-
-  local filepath
-  filepath=$(_generate_filename "$issue_number" "issue:$url" "$prefix") || return 1
-
-  _save_and_open_file "$filepath" "$prompt" "issue:$url"
-}
-
-_process_clipboard_issue() {
-  local prompt="$1"
-  local prefix="${2:-clip}"
-
-  echo "Generating short title from clipboard..."
-  local short_title
-  short_title=$(pbpaste | llm "Generate a short, kebab-case filename-style title for this GitHub issue. Avoid punctuation. No more than 8 words." \
-    | head -n1 | tr -cd '[:alnum:]-')
-
-  if [[ -z "$short_title" ]]; then
-    echo "❌ Error: Could not generate a short title from clipboard."
-    return 1
-  fi
-
-  local timestamp
-  timestamp=$(date +"%Y-%m-%d_%H-%M")
-  local filepath=~/tmp/"${prefix}-${short_title}_${timestamp}.md"
-
-  echo "Saving output to $filepath..."
-  if ! pbpaste | llm "$prompt" > "$filepath"; then
-    echo "❌ Error: Failed to generate summary content."
-    rm -f "$filepath"
-    return 1
-  fi
-
-  echo "Opening $filepath in vi..."
-  vi -c "syntax off" "$filepath"
-}
-
-
+# =======================
+# 🧠 Issue Analysis Commands (refactored to Python)
+# =======================
 
 icomment() {
   run_alias_py icomment "$@"
@@ -874,10 +792,9 @@ isum() {
   run_alias_py isum "$@"
 }
 
-# summarize issue in clipboard
 isum_clip() {
   run_alias_py isum-clip "$@"
-} 
+}
 
 ideep() {
   run_alias_py ideep "$@"
@@ -887,33 +804,17 @@ icodex() {
   run_alias_py icodex "$@"
 }
 
-
-# gappdiff pr diff into a new branch
-# get commit hash of diff
-# get url of issue
-# upload branch
-# run iprfb to generate prompt
-# paste prompt in codex
-
 iprfb() {
   run_alias_py iprfb "$@"
 }
 
-
-
- 
-# generate codex Ask prompt 
-# on how to address issue
 icask() {
   run_alias_py icask "$@"
 }
 
-# triage issue
 ictriage() {
   run_alias_py ictriage "$@"
 }
-
-
 
 iask() {
   run_alias_py iask "$@"
@@ -922,6 +823,10 @@ iask() {
 imuse() {
   run_alias_py imuse "$@"
 }
+
+# =======================
+# 🔧 Development Tools
+# =======================
 
 itry() {
   if [ "$1" = "--help" ]; then
