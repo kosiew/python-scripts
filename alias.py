@@ -616,29 +616,34 @@ def crun(
     typer.secho("✅ crun finished.", fg=typer.colors.GREEN)
 
 
-@app.command(help="Run cargo test with optional head/tail and verbosity (ctest)")
+@app.command(help="Run cargo test with optional head/tail and verbosity (ctest)", context_settings={"ignore_unknown_options": True, "allow_extra_args": True})
 def ctest(
+    ctx: typer.Context,
     head: Optional[int] = typer.Option(None, "-h", help="Show only first N lines"),
     tail: Optional[int] = typer.Option(None, "-t", help="Show only last N lines"),
     verbose: bool = typer.Option(False, "-v", help="Run in verbose mode"),
-    args: List[str] = typer.Argument(None, help="Arguments passed to cargo test; use '--' to separate"),
+    args: Optional[List[str]] = typer.Argument(None, help="Arguments passed to cargo test; use '--' to separate"),
 ) -> None:
     """Run `cargo test` (quiet by default), pass arguments, and show output (optionally head/tail).
 
     Mirrors the shell helper: -v disables -q, -h/-t show head/tail lines. Non-verbose opens output in $EDITOR via a tmp file.
     """
-    items = args or []
+    items = list(args or [])
+    extra = list(getattr(ctx, "args", []) or [])
 
     cmd = ["cargo", "test"]
     if not verbose:
         cmd.append("-q")
-    cmd.extend(items)
+    cmd.extend(items + extra)
 
+    typer.secho(f"🔧 Assembled command: {' '.join(cmd)}", fg=typer.colors.CYAN)
     try:
+        typer.echo("🔁 Running cargo test...")
         proc = _run(cmd, check=False)
         out = proc.stdout or ""
-    except Exception:
-        typer.secho("❌ Failed to run cargo test (is cargo installed?).", fg=typer.colors.RED)
+        typer.secho("💾 Captured cargo test output.", fg=typer.colors.CYAN)
+    except Exception as exc:
+        typer.secho(f"❌ Failed to run cargo test (is cargo installed?): {exc}", fg=typer.colors.RED)
         raise typer.Exit(1)
 
     lines = out.splitlines()
@@ -656,10 +661,13 @@ def ctest(
 
     outdir = Path(os.path.expanduser("~/tmp"))
     outdir.mkdir(parents=True, exist_ok=True)
-    outpath = outdir / f"ctest-{_nowstamp()}.txt"
+    branch_clean = _get_git_branch()
+    outpath = outdir / f"ctest-{branch_clean}-{_nowstamp()}.txt"
     outpath.write_text(content, encoding="utf-8")
-
+    typer.secho(f"✅ Wrote cargo test output to: {outpath}", fg=typer.colors.GREEN)
+    typer.echo("🖥️ Opening output in editor...")
     _open_in_editor(outpath)
+    typer.secho("✅ ctest finished.", fg=typer.colors.GREEN)
 
 @app.command(name="encode_and_copy")
 def encode_and_copy_cmd(
