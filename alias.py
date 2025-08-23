@@ -529,6 +529,49 @@ def ccheck(
     editor = os.environ.get("EDITOR") or "vi"
     _open_in_editor(outpath, editor)
 
+
+@app.command(help="Run cargo run with optional head/tail and verbosity (crun)")
+def crun(
+    args: List[str] = typer.Argument(None, help="Arguments passed to cargo run; use '--' to separate"),
+    head: Optional[int] = typer.Option(None, "-h", help="Show only first N lines"),
+    tail: Optional[int] = typer.Option(None, "-t", help="Show only last N lines"),
+    verbose: bool = typer.Option(False, "-v", help="Run in verbose mode"),
+) -> None:
+    """Run `cargo run` (quiet by default), pass arguments, and show output (optionally head/tail).
+
+    Use -v to enable non-quiet mode. Use args after '--' in shell to forward to cargo.
+    """
+    items = args or []
+
+    cmd = ["cargo", "run"]
+    if not verbose:
+        cmd.append("-q")
+    # append forwarded args
+    cmd.extend(items)
+
+    try:
+        proc = _run(cmd, check=False)
+        out = proc.stdout or ""
+    except Exception:
+        typer.secho("❌ Failed to run cargo run (is cargo installed?).", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    lines = out.splitlines()
+    if head is not None and head > 0:
+        lines = lines[:head]
+    if tail is not None and tail > 0:
+        lines = lines[-tail:]
+
+    content = "\n".join(lines)
+    outdir = Path(os.path.expanduser("~/tmp"))
+    outdir.mkdir(parents=True, exist_ok=True)
+    outpath = outdir / f"crun-{_nowstamp()}.txt"
+    outpath.write_text(content, encoding="utf-8")
+
+    # Open in editor (vim preferred behavior in shell)
+    editor = os.environ.get("EDITOR") or "vi"
+    _open_in_editor(outpath, editor)
+
 @app.command(name="encode_and_copy")
 def encode_and_copy_cmd(
     text: str = typer.Argument(..., help="Text to base64-encode and copy to clipboard")
