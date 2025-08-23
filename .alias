@@ -427,14 +427,7 @@ gfcommit() {
  
 
 gsplit() {
-  echo "🧨 Splitting last commit into individual file commits with AI-powered messages..."
-
-  git reset --soft HEAD~1 || { echo "❌ Failed to reset HEAD~1"; return 1; }
-  git reset || { echo "❌ Failed to unstage files"; return 1; }
-
-  gfcommit
-
-  echo "✅ Done! All files have been committed individually."
+  run_alias_py gsplit "$@"
 }
 
 

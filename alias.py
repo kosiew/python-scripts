@@ -959,6 +959,35 @@ def gfcommit() -> None:
 
     typer.secho("✅ Done! All files processed.", fg=typer.colors.GREEN)
 
+
+@app.command(help="Split last commit into individual file commits (gsplit)")
+def gsplit() -> None:
+    """Reset last commit (soft), unstage files, then run `gfcommit` to commit files individually.
+
+    Mirrors the shell `gsplit` helper. This rewrites history: use with care.
+    """
+    typer.secho("🧨 Splitting last commit into individual file commits with AI-powered messages...", fg=typer.colors.CYAN)
+
+    try:
+        _run(["git", "reset", "--soft", "HEAD~1"])
+    except Exception:
+        typer.secho("❌ Failed to reset HEAD~1", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    try:
+        _run(["git", "reset"])
+    except Exception:
+        typer.secho("❌ Failed to unstage files", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Delegate to gfcommit which handles per-file processing
+    try:
+        gfcommit()
+    except Exception:
+        typer.secho("⚠️ gfcommit encountered errors; some files may be skipped.", fg=typer.colors.YELLOW)
+
+    typer.secho("✅ Done! All files have been committed individually.", fg=typer.colors.GREEN)
+
 @app.command(name="chezcrypt")
 def chezcrypt_cmd(dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be encrypted without running chezmoi"),
                  targets: list[str] = typer.Argument(..., help="One or more target directories to encrypt")) -> None:
