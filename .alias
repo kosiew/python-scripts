@@ -863,23 +863,11 @@ _process_clipboard_issue() {
 
 
 icomment() {
-  if [ $# -ne 1 ]; then
-    echo "Usage: icomment <github-issue-url>"
-    return 1
-  fi
-  _process_issue "$1" \
-    "Add a well-thought-out comment to the issue. It should provide a new and helpful perspective, ideally grounded in the code or project direction. Keep it constructive and specific." \
-    "icomment"
+  run_alias_py icomment "$@"
 }
 
 irespond() {
-  if [ $# -ne 1 ]; then
-    echo "Usage: irespond <github-issue-url>"
-    return 1
-  fi
-  _process_issue "$1" \
-    "Respond to the latest unanswered questions directed at @kosiew. Provide thoughtful, detailed, and technically sound arguments to move the discussion forward. Be respectful and concise." \
-    "irespond"
+  run_alias_py irespond "$@"
 }
 
 isum() {

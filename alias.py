@@ -1877,6 +1877,51 @@ def copyfromurl_cmd(url: str = typer.Argument(..., help="URL to fetch"), selecto
         raise typer.Exit(1)
     # end of cdiff_cmd
 
+
+@app.command(help="Add a well-thought-out comment to a GitHub issue")
+def icomment(
+    url: str = typer.Argument(..., help="GitHub issue/PR URL"),
+    no_open: bool = typer.Option(False, "--no-open", help="Do not open the file in $EDITOR"),
+    editor: Optional[str] = typer.Option(None, "--editor", "-e", help="Editor to open file"),
+):
+    """
+    Add a well-thought-out comment to a GitHub issue.
+    
+    This command extracts the issue context and generates a thoughtful comment
+    that provides a new and helpful perspective, ideally grounded in the code
+    or project direction. The comment is constructive and specific.
+    """
+    prompt = (
+        "Add a well-thought-out comment to the issue. It should provide a new and helpful "
+        "perspective, ideally grounded in the code or project direction. Keep it constructive and specific."
+    )
+    
+    # Reuse the existing issue_to_file functionality
+    issue_to_file(url=url, prompt=prompt, prefix="icomment", no_open=no_open, editor=editor)
+
+
+@app.command(help="Respond to the latest unanswered questions directed at @kosiew")
+def irespond(
+    url: str = typer.Argument(..., help="GitHub issue/PR URL"),
+    no_open: bool = typer.Option(False, "--no-open", help="Do not open the file in $EDITOR"),
+    editor: Optional[str] = typer.Option(None, "--editor", "-e", help="Editor to open file"),
+):
+    """
+    Respond to the latest unanswered questions directed at @kosiew.
+    
+    This command extracts the issue context and generates thoughtful, detailed,
+    and technically sound arguments to move the discussion forward. The response
+    is respectful and concise.
+    """
+    prompt = (
+        "Respond to the latest unanswered questions directed at @kosiew. Provide thoughtful, "
+        "detailed, and technically sound arguments to move the discussion forward. Be respectful and concise."
+    )
+    
+    # Reuse the existing issue_to_file functionality
+    issue_to_file(url=url, prompt=prompt, prefix="irespond", no_open=no_open, editor=editor)
+
+
 if __name__ == "__main__":
     app()
 
