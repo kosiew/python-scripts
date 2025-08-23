@@ -385,10 +385,11 @@ def gs(args: List[str] = typer.Argument(None, help="Arguments forwarded: [commit
 
     outdir = Path(os.path.expanduser("~/tmp"))
     outdir.mkdir(parents=True, exist_ok=True)
-    outpath = outdir / f"gs-{_nowstamp()}.txt"
+    branch_clean = _get_git_branch()
+    outpath = outdir / f"gs-{branch_clean}-{_nowstamp()}.txt"
     outpath.write_text(output, encoding="utf-8")
 
-    _open_in_editor(outpath)
+    _open_in_editor(outpath, syntax_on=True)
 
 
 @app.command(name="grmuntracked", help="Remove untracked files (asks for confirmation)")
