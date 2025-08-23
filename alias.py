@@ -2258,25 +2258,10 @@ def ictriage2(
         if local_md.exists():
             tpl_text = local_md.read_text(encoding="utf-8")
         else:
-            # Use the same prompt template as the ictriage command
-            tpl_text = (
-                "**Role:** You are a **senior open-source contributor and software engineer**.\n\n"
-                "**Task:** Given a GitHub issue and the associated codebase, perform **triage**.\n\n"
-                "**OUTPUT RULES (STRICT):**\n"
-                "- Produce **only** the sections shown below, in this exact order and formatting.\n"
-                "- After the Description, **reproduce the Steps block VERBATIM** (do not add, remove, or change words, bullets, or indentation).\n"
-                "- **Do not** add any extra sections such as \"Analysis\", \"Determination\", \"Conclusion\", or repository-specific sub-steps.\n"
-                "- Keep the Description concise.\n"
-                "- The first heading (## ...) should be the issue title or the primary error message.\n\n"
-                "---\n"
-                "## <Issue Title or Primary Error Message>\n\n"
-                "**Description of issue:**\n${summary}\n\n"
-                "**Steps:**\n\n"
-                "1. Review the repository to locate all areas relevant to the issue.\n"
-                "2. Provide a high-level, detailed action plan for resolving the issue.\n"
-                "3. Determine whether the issue is\n\t- Bug to be fixed.\n\t- Feature to be implemented.\n\t- Update documentation to improve user experience.\n\t- Ask user for more information.\n\t- Other (with justification).\n"
-                "4. Provide a high-level, detailed action plan for resolving the issue.\n"
-            )
+            typer.secho("❌ Template 'ictriage.md' not found next to alias.py and no --template provided. Please create ictriage.md or pass --template <path|text>.", fg=typer.colors.RED)
+            raise typer.Exit(2)
+        
+    # No local fallback provided; require ictriage.md or --template
 
     # Substitute and write
     content = Template(tpl_text).safe_substitute(summary=summary_text, url=url, id=issue_id, timestamp=ts)
