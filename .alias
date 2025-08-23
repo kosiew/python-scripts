@@ -181,21 +181,7 @@ alias nyd="npx prisma migrate dev && yd"
 alias nh="npx hardhat"
 
 copyfromurl() {
-  if [ "$#" -lt 2 ]; then
-    echo "⚠️ Usage: copyfromurl <url> <selector1> [selector2 ...]"
-    return 1
-  fi
-
-  local url="$1"
-  shift
-  echo "🌐 Fetching: $url"
-  echo "🔍 Extracting with selectors: $*"
-  
-  curl -s "$url" \
-    | strip-tags -m "$@" \
-    | pbcopy
-
-  echo "📋 Extracted content copied to clipboard!"
+  run_alias_py copyfromurl "$@"
 }
  
 

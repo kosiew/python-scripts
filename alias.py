@@ -574,6 +574,44 @@ def cdiff_cmd() -> None:
             Path(f2.name).unlink(missing_ok=True)
         except Exception:
             pass
+
+
+@app.command(name="copyfromurl")
+def copyfromurl_cmd(url: str = typer.Argument(..., help="URL to fetch"), selectors: list[str] = typer.Argument(..., help="One or more selectors to pass to strip-tags -m")) -> None:
+    """Fetch a URL, extract content using `strip-tags -m <selectors...>`, and copy to the macOS clipboard.
+
+    If not on macOS or pbcopy not available, prints the extracted content to stdout.
+    """
+    from shutil import which
+
+    if not url or not selectors:
+        typer.secho("⚠️ Usage: copyfromurl <url> <selector1> [selector2 ...]", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    typer.secho(f"🌐 Fetching: {url}", fg=typer.colors.CYAN)
+    typer.secho(f"🔍 Extracting with selectors: {' '.join(selectors)}", fg=typer.colors.CYAN)
+
+    try:
+        proc_curl = _run(["curl", "-s", url])
+        strip = which("strip-tags")
+        if not strip:
+            typer.secho("❌ 'strip-tags' not found in PATH.", fg=typer.colors.RED)
+            typer.echo(proc_curl.stdout)
+            raise typer.Exit(1)
+
+        # run strip-tags -m <selectors...>
+        proc_strip = _run([strip, "-m", *selectors], input=proc_curl.stdout)
+        out = proc_strip.stdout or ""
+
+        if sys.platform == "darwin" and which("pbcopy"):
+            p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE, text=True)
+            p.communicate(out)
+            typer.secho("📋 Extracted content copied to clipboard!", fg=typer.colors.GREEN)
+        else:
+            typer.echo(out)
+    except Exception as exc:
+        typer.secho(f"❌ Failed: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
     # end of cdiff_cmd
 
 if __name__ == "__main__":
