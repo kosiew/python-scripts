@@ -679,6 +679,33 @@ def gsquash(
 
     typer.secho(f"🎯 Done on {target_branch}. (If previously pushed, consider: git push -f)", fg=typer.colors.GREEN)
 
+
+@app.command(help="Interactive rebase with optional signoff (gggrbi)")
+def gggrbi(args: List[str] = typer.Argument(None)) -> None:
+    """Run `git rebase -i -r [--signoff] <args>` depending on git config or env.
+
+    Mirrors shell helper `gggrbi`: adds --signoff if git config commit.gcommitSigned is set
+    or environment variable `GCOMMIT_SIGNED` is present.
+    """
+    signoff_flag = []
+    try:
+        proc = _run(["git", "config", "--get", "commit.gcommitSigned"], check=False)
+        cfg = (proc.stdout or "").strip()
+        if cfg:
+            signoff_flag = ["--signoff"]
+    except Exception:
+        pass
+
+    if os.environ.get("GCOMMIT_SIGNED"):
+        signoff_flag = ["--signoff"]
+
+    cmd = ["git", "rebase", "-i", "-r", *signoff_flag, *args]
+    try:
+        _run(cmd)
+    except subprocess.CalledProcessError as exc:
+        typer.secho(f"❌ git rebase failed: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
 @app.command(name="chezcrypt")
 def chezcrypt_cmd(dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be encrypted without running chezmoi"),
                  targets: list[str] = typer.Argument(..., help="One or more target directories to encrypt")) -> None:

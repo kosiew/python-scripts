@@ -379,13 +379,7 @@ gsquash() {
 
 
 gggrbi() {
-  local signoff_flag=""
-
-  if git config --get commit.gcommitSigned >/dev/null || [ -n "$GCOMMIT_SIGNED" ]; then
-    signoff_flag="--signoff"
-  fi
-
-  git rebase -i -r $signoff_flag "$@"
+  run_alias_py gggrbi "$@"
 }
 
 
