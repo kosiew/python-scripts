@@ -578,3 +578,28 @@ def cdiff_cmd() -> None:
 
 if __name__ == "__main__":
     app()
+
+
+@app.command(name="clean_old_zcompdump")
+def clean_old_zcompdump_cmd() -> None:
+    """Remove old ~/.zcompdump* files, keeping the current ~/.zcompdump.
+
+    Mirrors the shell helper: finds files matching ~/.zcompdump* and removes any that are not
+    the current ~/.zcompdump file, then prints a summary.
+    """
+    home = Path.home()
+    current_dump = home / ".zcompdump"
+    files = list(home.glob('.zcompdump*'))
+    count = 0
+
+    for f in files:
+        try:
+            if f != current_dump:
+                f.unlink(missing_ok=True)
+                count += 1
+        except Exception:
+            # ignore individual unlink errors
+            continue
+
+    if count > 0:
+        typer.secho(f"🗑️  Cleaned up {count} old zcompdump file(s)!", fg=typer.colors.GREEN)

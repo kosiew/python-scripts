@@ -171,19 +171,7 @@ cdiff() {
  
  
 clean_old_zcompdump() {
-  local current_dump="$HOME/.zcompdump"
-  local files=($HOME/.zcompdump*(N))
-  local count=0
-
-  for file in $files; do
-    if [[ "$file" != "$current_dump" ]]; then
-      rm -f "$file"
-      ((count++))
-    fi
-  done
-  if (( count > 0 )); then
-    echo "🗑️  Cleaned up $count old zcompdump file(s)!"
-  fi
+  run_alias_py clean_old_zcompdump "$@"
 }
 
 # ====================
