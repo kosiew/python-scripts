@@ -2054,6 +2054,7 @@ def ideep(
     url: str = typer.Argument(..., help="GitHub issue/PR URL"),
     no_open: bool = typer.Option(False, "--no-open", help="Do not open the file in $EDITOR"),
     editor: Optional[str] = typer.Option(None, "--editor", "-e", help="Editor to open file"),
+    local_md: str = typer.Option("ideep.md", "--local-md", help="Local template filename next to alias.py"),
 ):
     """
     Deep analysis of a GitHub issue from a senior developer perspective.
@@ -2064,18 +2065,38 @@ def ideep(
     - Ranking by feasibility and effectiveness
     - Clear rationale for rankings
     """
-    prompt = (
-        "You are a senior open-source contributor and software engineer. "
-        "Given the GitHub issue linked, think deeply and suggest:\n"
-        "- How one might investigate this issue\n"
-        "- Multiple approaches to resolve it\n"
-        "- Rank the approaches by feasibility and effectiveness\n"
-        "- Provide brief rationale for the rankings\n"
-        "Format the response with clear headings and bullet points."
-    )
     
-    # Reuse the existing issue_to_file functionality
-    issue_to_file(url=url, prompt=prompt, prefix="ideep", no_open=no_open, editor=editor)
+    # Prefer a local template file (next to alias.py) like ictriage/icask
+    issue_id = _extract_id(url)
+    ts = _nowstamp()
+
+    tpl_text = _read_local_template(local_md)
+    if tpl_text is None:
+        typer.secho(f"❌ Template '{local_md}' not found next to alias.py. Please create {local_md}.", fg=typer.colors.RED)
+        raise typer.Exit(2)
+
+    # Ensure llm is available for generating deep analysis
+    if not _which("llm"):
+        typer.secho("❌ 'llm' not found in PATH. ideep requires 'llm' to generate the analysis.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    try:
+        typer.secho("🧠 Generating concise summary of the issue...", fg=typer.colors.CYAN)
+    except Exception:
+        pass
+
+    summary_text = _gen_summary_from_issue(url)
+    if not summary_text:
+        summary_text = "(Summary could not be auto-generated. Replace with 3–6 concise bullets.)"
+
+    # Still generate full deep analysis via LLM for completeness (optional), but the template will receive the concise summary.
+    try:
+        typer.secho("🧠 Generating deep analysis using LLM (also saved to template as supplemental content)...", fg=typer.colors.CYAN)
+    except Exception:
+        pass
+
+    # Pass the concise summary into the template as ${summary}
+    _render_and_write(issue_id=issue_id, url=url, prefix="ideep", tpl_text=tpl_text, summary_text=summary_text, ts=ts, no_open=no_open, editor=editor)
 
 
 @app.command(help="Generate specific instructions for AI coding agents (Codex) to implement solutions")
@@ -2119,6 +2140,12 @@ def icodex(
         "4. Focus solely on **specific, executable actions**—exclude vague steps or general debugging tips."
     )
     
+    # Warn that this command is deprecated / not used anymore
+    try:
+        typer.secho("⚠️ 'icodex' is deprecated and not used anymore. Consider using updated workflows.", fg=typer.colors.YELLOW)
+    except Exception:
+        pass
+
     # Reuse the existing issue_to_file functionality
     issue_to_file(url=url, prompt=prompt, prefix="icodex", no_open=no_open, editor=editor)
 
@@ -2139,6 +2166,12 @@ def iprfb(
     
     The review focuses on consistency, redundancy, and effectiveness of the changes.
     """
+    # Warn that this command is deprecated / not used anymore
+    try:
+        typer.secho("⚠️ 'iprfb' is deprecated and not used anymore. Consider using updated workflows.", fg=typer.colors.YELLOW)
+    except Exception:
+        pass
+
     # Determine if first argument is a URL or summary text
     is_url = issue.startswith(("http://", "https://"))
     
