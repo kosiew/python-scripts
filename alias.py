@@ -1961,6 +1961,35 @@ def isum_clip(
     clipboard_to_file(prompt=prompt, prefix="isum_clip", no_open=no_open, editor=editor)
 
 
+@app.command(help="Deep analysis of GitHub issue with investigation approaches and solutions")
+def ideep(
+    url: str = typer.Argument(..., help="GitHub issue/PR URL"),
+    no_open: bool = typer.Option(False, "--no-open", help="Do not open the file in $EDITOR"),
+    editor: Optional[str] = typer.Option(None, "--editor", "-e", help="Editor to open file"),
+):
+    """
+    Deep analysis of a GitHub issue from a senior developer perspective.
+    
+    This command extracts the issue context and provides thoughtful analysis including:
+    - Investigation approaches
+    - Multiple solution approaches
+    - Ranking by feasibility and effectiveness
+    - Clear rationale for rankings
+    """
+    prompt = (
+        "You are a senior open-source contributor and software engineer. "
+        "Given the GitHub issue linked, think deeply and suggest:\n"
+        "- How one might investigate this issue\n"
+        "- Multiple approaches to resolve it\n"
+        "- Rank the approaches by feasibility and effectiveness\n"
+        "- Provide brief rationale for the rankings\n"
+        "Format the response with clear headings and bullet points."
+    )
+    
+    # Reuse the existing issue_to_file functionality
+    issue_to_file(url=url, prompt=prompt, prefix="ideep", no_open=no_open, editor=editor)
+
+
 if __name__ == "__main__":
     app()
 

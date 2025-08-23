@@ -880,19 +880,7 @@ isum_clip() {
 } 
 
 ideep() {
-  if [ $# -ne 1 ]; then
-    echo "Usage: ideep <github-issue-url>"
-    return 1
-  fi
-  _process_issue "$1" \
-    "You are a senior open-source contributor and software engineer. 
-    Given the GitHub issue linked, think deeply and suggest:
-    - How one might investigate this issue
-    - Multiple approaches to resolve it
-    - Rank the approaches by feasibility and effectiveness
-    - Provide brief rationale for the rankings
-    Format the response with clear headings and bullet points." \
-    "ideep"
+  run_alias_py ideep "$@"
 }
 
 icodex() {
