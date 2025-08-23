@@ -47,7 +47,7 @@ def _llm(flags: list[str], prompt: str, input_text: Optional[str] = None) -> str
         return ""
 
 def _open_in_editor(path: Path, editor: Optional[str]) -> None:
-    ed = editor or os.environ.get("EDITOR") or "vi"
+    ed = editor or os.environ.get("EDITOR") or "mvim"
     try:
         subprocess.run([ed, str(path)])
     except Exception:
@@ -336,9 +336,7 @@ def gdiff(args: List[str] = typer.Argument(None, help="Arguments forwarded to gi
     else:
         typer.echo("📋 Diff output saved to: " + str(outpath))
 
-    # Open in editor
-    editor = os.environ.get("EDITOR") or "vi"
-    _open_in_editor(outpath, editor)
+    _open_in_editor(outpath)
 
 
 @app.command(help="Show git diff --stat for commits or working tree (gs)")
@@ -375,8 +373,7 @@ def gs(args: List[str] = typer.Argument(None, help="Arguments forwarded: [commit
     outpath = outdir / f"gs-{_nowstamp()}.txt"
     outpath.write_text(output, encoding="utf-8")
 
-    editor = os.environ.get("EDITOR") or "vi"
-    _open_in_editor(outpath, editor)
+    _open_in_editor(outpath)
 
 
 @app.command(name="grmuntracked", help="Remove untracked files (asks for confirmation)")
@@ -484,8 +481,7 @@ def rust_clippy() -> None:
             outdir.mkdir(parents=True, exist_ok=True)
             outpath = outdir / f"rust_clippy-{_nowstamp()}.txt"
             outpath.write_text(output, encoding="utf-8")
-            editor = os.environ.get("EDITOR") or "vi"
-            _open_in_editor(outpath, editor)
+            _open_in_editor(outpath)
         except Exception:
             typer.secho("❌ Failed running rust_clippy script.", fg=typer.colors.RED)
             raise typer.Exit(1)
@@ -526,8 +522,7 @@ def ccheck(
     outpath = outdir / f"ccheck-{_nowstamp()}.txt"
     outpath.write_text(content, encoding="utf-8")
 
-    editor = os.environ.get("EDITOR") or "vi"
-    _open_in_editor(outpath, editor)
+    _open_in_editor(outpath)
 
 
 @app.command(help="Run cargo run with optional head/tail and verbosity (crun)")
@@ -568,9 +563,7 @@ def crun(
     outpath = outdir / f"crun-{_nowstamp()}.txt"
     outpath.write_text(content, encoding="utf-8")
 
-    # Open in editor (vim preferred behavior in shell)
-    editor = os.environ.get("EDITOR") or "vi"
-    _open_in_editor(outpath, editor)
+    _open_in_editor(outpath)
 
 
 @app.command(help="Run cargo test with optional head/tail and verbosity (ctest)")
@@ -616,8 +609,7 @@ def ctest(
     outpath = outdir / f"ctest-{_nowstamp()}.txt"
     outpath.write_text(content, encoding="utf-8")
 
-    editor = os.environ.get("EDITOR") or "vi"
-    _open_in_editor(outpath, editor)
+    _open_in_editor(outpath)
 
 @app.command(name="encode_and_copy")
 def encode_and_copy_cmd(
@@ -825,8 +817,7 @@ def gdn(branch: Optional[str] = typer.Argument(None, help="Branch to compare aga
     tmp.mkdir(parents=True, exist_ok=True)
     outpath = tmp / f"gdn-{b}-{_nowstamp()}.txt"
     outpath.write_text(output, encoding="utf-8")
-    editor = os.environ.get("EDITOR") or "vi"
-    _open_in_editor(outpath, editor)
+    _open_in_editor(outpath)
 
 
 @app.command(help="Checkout the repository's main branch (gcom)")
@@ -1519,8 +1510,7 @@ def gadded(branch: str = typer.Argument(..., help="Branch to compare against")) 
     outpath.parent.mkdir(parents=True, exist_ok=True)
     outpath.write_text(content, encoding="utf-8")
 
-    editor = os.environ.get("EDITOR") or "vi"
-    _open_in_editor(outpath, editor)
+    _open_in_editor(outpath)
 
 
 @app.command(help="Rebase a range and add Signed-off-by to each commit (gsign)")

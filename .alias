@@ -291,7 +291,6 @@ alias glo="git log --since=yesterday.midnight --oneline --graph --color=always -
 alias gmp="git checkout main && git pull && git co -"
 alias gmm="git merge main"
 alias gpatch="git diff > wip.patch && git checkout ."
-alias gapplypatch="git apply < wip.patch"
 # back to how it was last commit 
 alias grestore="git restore --staged . && git restore . && git clean -fd"
 alias gbinfo="git branch --sort=-committerdate --format='%(HEAD)%(color:yellow)%(refname:short)|%(color:bold green)%(committerdate:relative)|%(color:blue)%(subject)|%(color:magenta)%(authorname)%(color:reset)' --color=always | column -ts'|'"
