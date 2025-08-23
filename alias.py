@@ -2189,6 +2189,75 @@ def icask(
     issue_to_file(url=url, prompt=prompt, prefix="icask", no_open=no_open, editor=editor)
 
 
+@app.command(help="Perform structured triage of GitHub issues with standardized output format")
+def ictriage(
+    url: str = typer.Argument(..., help="GitHub issue/PR URL"),
+    no_open: bool = typer.Option(False, "--no-open", help="Do not open the file in $EDITOR"),
+    editor: Optional[str] = typer.Option(None, "--editor", "-e", help="Editor to open file"),
+):
+    """
+    Perform structured triage of GitHub issues with standardized output format.
+    
+    This command analyzes GitHub issues and produces a standardized triage report
+    with strict formatting requirements for consistent issue processing.
+    """
+    description = "1. **Describe** the issue clearly and concisely, with relevant information and code excerpt for investigation"
+    
+    # Compose the full prompt with the exact template format
+    prompt = f"""**Role:** You are a **senior open-source contributor and software engineer**.
+
+**Task:** Given a GitHub issue and the associated codebase, perform **triage**.
+
+**OUTPUT RULES (STRICT):**
+- Produce **only** the sections shown below, in this exact order and formatting.
+- After the Description, **reproduce the Steps block VERBATIM** (do not add, remove, or change words, bullets, or indentation).
+- **Do not** add any extra sections such as "Analysis", "Determination", "Conclusion", or repository-specific sub-steps.
+- Keep the Description concise.
+- The first heading (## ...) should be the issue title or the primary error message.
+
+---
+**Output Format (reproduce exactly, except fill in the Description and heading):**
+
+## <Issue Title or Primary Error Message>
+
+**Description of issue:**
+{description}
+
+**Steps:**
+
+1. Review the repository to locate all areas relevant to the issue.
+2. Provide a high-level, detailed action plan for resolving the issue.
+3. Determine whether the issue is
+	- Bug to be fixed.
+	- Feature to be implemented.
+	- Update documentation to improve user experience.
+	- Ask user for more information.
+	- Other (with justification).
+4. Provide a high-level, detailed action plan for resolving the issue.
+---"""
+    
+    # Use the existing issue_to_file functionality
+    issue_to_file(url=url, prompt=prompt, prefix="ictriage", no_open=no_open, editor=editor)
+
+
+@app.command(help="Ask a specific question about a GitHub issue")
+def iask(
+    url: str = typer.Argument(..., help="GitHub issue/PR URL"),
+    question: str = typer.Argument(..., help="Question to ask about the issue"),
+    no_open: bool = typer.Option(False, "--no-open", help="Do not open the file in $EDITOR"),
+    editor: Optional[str] = typer.Option(None, "--editor", "-e", help="Editor to open file"),
+):
+    """
+    Ask a specific question about a GitHub issue.
+    
+    This command allows you to pose any question about a GitHub issue and get
+    an AI-generated response based on the issue context and codebase.
+    """
+    # For iask, the question itself is the prompt - no additional formatting needed
+    # This preserves the original behavior where the user's question is passed directly
+    issue_to_file(url=url, prompt=question, prefix="iask", no_open=no_open, editor=editor)
+
+
 if __name__ == "__main__":
     app()
 
