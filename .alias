@@ -876,9 +876,7 @@ isum() {
 
 # summarize issue in clipboard
 isum_clip() {
-  _process_clipboard_issue \
-    "Summarize the issue with headings, bullet points, and add diagrams if they help clarify the concepts." \
-    "isum_clip"
+  run_alias_py isum-clip "$@"
 } 
 
 ideep() {

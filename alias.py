@@ -1942,6 +1942,25 @@ def isum(
     issue_to_file(url=url, prompt=prompt, prefix="isum", no_open=no_open, editor=editor)
 
 
+@app.command(help="Summarize GitHub issue from clipboard with headings, bullet points, and diagrams")
+def isum_clip(
+    no_open: bool = typer.Option(False, "--no-open", help="Do not open the file in $EDITOR"),
+    editor: Optional[str] = typer.Option(None, "--editor", "-e", help="Editor to open file"),
+):
+    """
+    Summarize GitHub issue from clipboard with headings, bullet points, and add diagrams if they help clarify the concepts.
+    
+    This command reads the issue content from the clipboard and generates a comprehensive summary
+    with clear structure and visual aids when appropriate.
+    """
+    prompt = (
+        "Summarize the issue with headings, bullet points, and add diagrams if they help clarify the concepts."
+    )
+    
+    # Reuse the existing clipboard_to_file functionality
+    clipboard_to_file(prompt=prompt, prefix="isum_clip", no_open=no_open, editor=editor)
+
+
 if __name__ == "__main__":
     app()
 
