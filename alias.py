@@ -749,6 +749,7 @@ def chatmodes_copy_cmd(
     try:
         import shutil
 
+        typer.secho(f"🔁 Preparing to copy chatmodes to: {target}", fg=typer.colors.CYAN)
         target.mkdir(parents=True, exist_ok=True)
 
         md_files = list(source.glob("*.md")) if source.exists() else []
@@ -756,13 +757,18 @@ def chatmodes_copy_cmd(
             typer.secho(f"⚠️ No .md files found in source: {source}", fg=typer.colors.YELLOW)
             raise typer.Exit(1)
 
+        typer.secho(f"📦 Found {len(md_files)} .md file(s) to copy.", fg=typer.colors.CYAN)
         for f in md_files:
             dest = target / f.name
-            if preserve:
-                shutil.copy2(str(f), str(dest))
-            else:
-                # previous behavior: copy content
-                dest.write_bytes(f.read_bytes())
+            try:
+                if preserve:
+                    shutil.copy2(str(f), str(dest))
+                else:
+                    # previous behavior: copy content
+                    dest.write_bytes(f.read_bytes())
+                typer.echo(f"  ✅ {f.name} -> {dest}")
+            except Exception as exc:
+                typer.secho(f"  ⚠️ Failed to copy {f.name}: {exc}", fg=typer.colors.YELLOW)
 
         msg = f"✅ Copied chatmodes to {target}"
         if preserve:
