@@ -133,30 +133,6 @@ def _gen_filename(issue_id: str, title_source: str, prefix: str = "note") -> Pat
     ts = _nowstamp()
     return Path(os.path.expanduser("~/tmp")) / f"{issue_id}-{prefix}-{short}_{ts}.md"
 
-DEFAULT_TEMPLATE = """**Role:** You are a **senior open-source contributor and software engineer**.
-
-**Task:** Given a GitHub issue and the associated codebase, produce a strategic and actionable review by following these steps:
-
-## Description of issue
-${summary}
-
-**Steps:**
-
-1. Review the repository to locate all areas relevant to the issue.
-2. Determine whether the solution requires modifying existing code or extending the codebase.
-3. Provide a high-level, detailed action plan for resolving the issue.
-
----
-
-**Guidelines:**
-
-* Do **not** generate code.
-* Keep the commentary concise and strategic.
-* Focus on problem analysis and solution direction rather than implementation details.
-* Ensure the output is actionable for a coding agent without unnecessary narrative.
-"""
-
-
 # -------------------------
 # Template helpers
 # -------------------------
@@ -209,44 +185,6 @@ def summary(url: str = typer.Argument(..., help="GitHub issue/PR URL")):
     s = _gen_summary_from_issue(url)
     typer.echo(s or "(Summary could not be auto-generated. Replace with 3–6 concise bullets.)")
 
-@app.command("render-note", help="Render a template with ${summary}, ${url}, ${id}, ${timestamp}")
-def render_note(
-    url: str = typer.Argument(..., help="GitHub issue/PR URL"),
-    template: Optional[str] = typer.Option(None, "--template", "-t", help="Path or '-' for stdin"),
-    prefix: str = typer.Option("icask", "--prefix", "-p", help="Filename prefix"),
-    no_open: bool = typer.Option(False, "--no-open", help="Do not open the file in $EDITOR"),
-    editor: Optional[str] = typer.Option(None, "--editor", "-e", help="Editor to open file"),
-):
-    issue_id = _extract_id(url)
-    ts = _nowstamp()
-
-    summary_text = _gen_summary_from_issue(url)
-    if not summary_text:
-        summary_text = "(Summary could not be auto-generated. Replace with 3–6 concise bullets: problem, scope, impact, constraints.)"
-
-    if template == "-":
-        tpl_text = sys.stdin.read()
-    elif template:
-        tpl_text = Path(template).read_text(encoding="utf-8")
-    else:
-        # Prefer a local icask.md file next to this source file if present
-        local_md = Path(__file__).with_name("icask.md")
-        if local_md.exists():
-            tpl_text = local_md.read_text(encoding="utf-8")
-        else:
-            tpl_text = DEFAULT_TEMPLATE
-
-    content = Template(tpl_text).safe_substitute(
-        summary=summary_text, url=url, id=issue_id, timestamp=ts
-    )
-
-    outpath = _gen_filename(issue_id, f"issue:{url}", prefix)
-    outpath.parent.mkdir(parents=True, exist_ok=True)
-    outpath.write_text(content, encoding="utf-8")
-    typer.secho(f"✅ Wrote: {outpath}", fg=typer.colors.GREEN)
-
-    if not no_open:
-        _open_in_editor(outpath, editor)
 
 @app.command("issue-to-file", help="Run LLM over issue context with a prompt → file (like _process_issue)")
 def issue_to_file(
