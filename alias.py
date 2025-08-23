@@ -403,5 +403,49 @@ def chezupdate_cmd(dry_run: bool = typer.Option(False, "--dry-run", help="Show t
         typer.secho("❌ chezmoi update failed.", fg=typer.colors.RED)
         raise typer.Exit(1)
 
+
+@app.command(name="chezadd")
+def chezadd_cmd(dry_run: bool = typer.Option(False, "--dry-run", help="Show the chezmoi add commands without running them"),
+               targets: list[str] = typer.Argument(..., help="One or more target directories to add")) -> None:
+    """Add all files in the given directories to chezmoi (runs `chezmoi add <file>` for each file).
+
+    Use --dry-run to only print the commands.
+    """
+    if not targets:
+        typer.secho("Usage: chezadd <relative_path_to_directory> [more_dirs...]", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    for target_dir in targets:
+        p = Path(target_dir).expanduser()
+        if not p.exists() or not p.is_dir():
+            typer.secho(f"❌ Directory not found: {target_dir}", fg=typer.colors.RED)
+            continue
+
+        typer.secho(f"➕ Adding all files in {target_dir} to chezmoi", fg=typer.colors.CYAN)
+
+        find_cmd = ["find", str(p), "-type", "f", "-print0"]
+        try:
+            proc = _run(find_cmd, check=True)
+            raw = proc.stdout
+            if not raw:
+                typer.secho(f"⚠️ No files found in {target_dir}", fg=typer.colors.YELLOW)
+                continue
+
+            files = [x for x in raw.split("\x00") if x]
+
+            if dry_run:
+                for f in files:
+                    typer.echo(f"chezmoi add {f}")
+                continue
+
+            for f in files:
+                try:
+                    _run(["chezmoi", "add", f])
+                except subprocess.CalledProcessError as exc:
+                    typer.secho(f"❌ chezmoi add failed for {f}: {exc}", fg=typer.colors.RED)
+        except Exception as exc:
+            typer.secho(f"❌ Error processing {target_dir}: {exc}", fg=typer.colors.RED)
+            continue
+
 if __name__ == "__main__":
     app()

@@ -137,21 +137,9 @@ chezupdate() {
 }
 
 
+
 chezadd() {
-  if [ $# -lt 1 ]; then
-    echo "Usage: chezadd <relative_path_to_directory> [more_dirs...]"
-    return 1
-  fi
-
-  for target_dir in "$@"; do
-    if [ ! -d "$target_dir" ]; then
-      echo "❌ Directory not found: $target_dir"
-      continue
-    fi
-
-    echo "➕ Adding all files in $target_dir to chezmoi"
-    find "$target_dir" -type f -exec chezmoi add {} \;
-  done
+  run_alias_py chezadd "$@"
 }
 
 
