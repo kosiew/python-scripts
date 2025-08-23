@@ -706,6 +706,85 @@ def gggrbi(args: List[str] = typer.Argument(None)) -> None:
         typer.secho(f"❌ git rebase failed: {exc}", fg=typer.colors.RED)
         raise typer.Exit(1)
 
+
+@app.command(name="gcommit", help="Commit staged changes with an optional AI-generated message")
+def gcommit_cmd(message: Optional[str] = typer.Argument(None, help="Commit message; if omitted, generate via llm")) -> None:
+    """Commit staged changes. If message is omitted, generate one using `llm` from staged diff.
+
+    Prompts user to confirm the commit. Signs off if repo config `commit.gcommitSigned` or
+    environment `GCOMMIT_SIGNED` is set.
+    """
+    # If message not provided, generate one
+    msg = message
+    if not msg:
+        typer.echo("🧠 Generating commit message from staged changes...")
+        try:
+            staged = _run(["git", "diff", "--staged"]).stdout
+        except Exception:
+            staged = ""
+
+        if staged.strip():
+            generated = _llm(["-s", "Generate a clear, conventional commit message for these staged changes"], staged)
+            msg = generated.strip()
+
+        if not msg:
+            fallback = f"chore: commit at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            typer.secho("⚠️ No commit message generated. Using fallback message:", fg=typer.colors.YELLOW)
+            msg = fallback
+        else:
+            typer.secho("💬 AI-generated commit message:", fg=typer.colors.CYAN)
+
+    typer.echo("----------------------------")
+    typer.echo(msg)
+    typer.echo("----------------------------")
+
+    if not typer.confirm("👉 Proceed with commit?", default=False):
+        typer.secho("❌ Commit cancelled.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Determine signoff
+    signoff = False
+    try:
+        proc = _run(["git", "config", "--get", "commit.gcommitSigned"], check=False)
+        if (proc.stdout or "").strip():
+            signoff = True
+    except Exception:
+        pass
+    if os.environ.get("GCOMMIT_SIGNED"):
+        signoff = True
+
+    try:
+        if signoff:
+            _run(["git", "commit", "-s", "-m", msg])
+            typer.secho("✅ Commit (signed-off) completed!", fg=typer.colors.GREEN)
+        else:
+            _run(["git", "commit", "-m", msg])
+            typer.secho("✅ Commit completed!", fg=typer.colors.GREEN)
+    except subprocess.CalledProcessError as exc:
+        typer.secho(f"❌ Commit failed: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+
+@app.command(help="Stage all changes and run gcommit (gacommit)")
+def gacommit(args: List[str] = typer.Argument(None)) -> None:
+    """Stage all changes (git add .) and invoke the `gcommit` workflow.
+    Any arguments passed are forwarded to `gcommit`.
+    """
+    typer.echo("➕ Staging all changes...")
+    try:
+        _run(["git", "add", "."])
+    except Exception:
+        typer.secho("❌ Failed to stage changes.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    typer.echo("🚀 Running gcommit...")
+    # Forward args to gcommit command handler: construct a message arg if provided
+    if args:
+        # join args as a single message
+        _run([sys.executable, __file__, "gcommit", " ".join(args)])
+    else:
+        _run([sys.executable, __file__, "gcommit"])
+
 @app.command(name="chezcrypt")
 def chezcrypt_cmd(dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be encrypted without running chezmoi"),
                  targets: list[str] = typer.Argument(..., help="One or more target directories to encrypt")) -> None:

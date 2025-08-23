@@ -384,58 +384,18 @@ gggrbi() {
 
 
 gacommit() {
-  echo "➕ Staging all changes..."
-  git add . || { echo "❌ Failed to stage changes."; return 1; }
-
-  echo "🚀 Running gcommit..."
-  gcommit "$@"
+  run_alias_py gacommit "$@"
 }
  
 #auto commit message for staged files 
 
 _gcommit_with_message() {
-  local msg="$*"
-
-  if [ -z "$msg" ]; then
-    echo "🧠 Generating commit message from staged changes..."
-    msg=$(git diff --staged | llm -s "Generate a clear, conventional commit message for these staged changes")
-
-    if [ -z "$msg" ]; then
-      local fallback_msg="chore: commit at $(date '+%Y-%m-%d %H:%M:%S')"
-      echo "⚠️ No commit message generated. Using fallback message:"
-      msg="$fallback_msg"
-    else
-      echo "💬 AI-generated commit message:"
-    fi
-  else
-    echo "📝 Using provided commit message:"
-  fi
-
-  echo "----------------------------"
-  echo "$msg"
-  echo "----------------------------"
-
-  echo -n "👉 Proceed with commit? [y/N] "
-  read confirm
-  if [[ "$confirm" =~ ^[Yy]$ ]]; then
-    # Decide whether to sign-off
-    local commit_opts="-m"
-    if git config --get commit.gcommitSigned >/dev/null || [ -n "$GCOMMIT_SIGNED" ]; then
-      # Repo config or env variable indicates sign-off
-      git commit -s -m "$msg" && echo "✅ Commit (signed-off) completed!"
-    else
-      git commit -m "$msg" && echo "✅ Commit completed!"
-    fi
-  else
-    echo "❌ Commit cancelled."
-    return 1
-  fi
+  run_alias_py gcommit "$@"
 }
 
 
-
 gcommit() {
-  _gcommit_with_message "$@"
+  run_alias_py gcommit "$@"
 }
 
 # copy HEAD commit hash
