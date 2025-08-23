@@ -876,8 +876,10 @@ def gdn(branch: Optional[str] = typer.Argument(None, help="Branch to compare aga
     typer.secho(f"🔍 Comparing against branch: {b}", fg=typer.colors.CYAN)
 
     try:
+        typer.echo("🔁 Running git diff --name-only...")
         proc = _run(["git", "diff", "--name-only", b])
         output = proc.stdout or ""
+        typer.secho("💾 Captured git diff output.", fg=typer.colors.CYAN)
     except Exception as exc:
         typer.secho(f"❌ git diff failed: {exc}", fg=typer.colors.RED)
         raise typer.Exit(1)
@@ -885,8 +887,11 @@ def gdn(branch: Optional[str] = typer.Argument(None, help="Branch to compare aga
     # Write to a temporary file and open in editor
     tmp = Path(os.path.expanduser("~/tmp"))
     tmp.mkdir(parents=True, exist_ok=True)
-    outpath = tmp / f"gdn-{b}-{_nowstamp()}.txt"
+    current_branch = _get_git_branch()
+    outpath = tmp / f"gdn-{b}-{current_branch}-{_nowstamp()}.txt"
     outpath.write_text(output, encoding="utf-8")
+    typer.secho(f"✅ Wrote git diff list to: {outpath}", fg=typer.colors.GREEN)
+    typer.echo("🖥️ Opening output in editor...")
     _open_in_editor(outpath)
 
 
