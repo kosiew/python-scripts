@@ -335,7 +335,7 @@ def gdiff(args: List[str] = typer.Argument(None, help="Arguments forwarded to gi
     else:
         typer.echo("📋 Diff output saved to: " + str(outpath))
 
-    _open_in_editor(outpath)
+    _open_in_editor(outpath, syntax_on=True)
 
 
 @app.command(help="Show git diff --stat for commits or working tree (gs)")
