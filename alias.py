@@ -492,6 +492,43 @@ def rust_clippy() -> None:
     else:
         typer.secho("⚠️ ci/scripts/rust_clippy.sh not found or not executable.", fg=typer.colors.YELLOW)
 
+
+@app.command(help="Run cargo check with optional head/tail and project selection (ccheck)")
+def ccheck(
+    head: Optional[int] = typer.Option(None, "-h", help="Show only first N lines"),
+    tail: Optional[int] = typer.Option(None, "-t", help="Show only last N lines"),
+    project: Optional[str] = typer.Option(None, "-p", help="Cargo package (-p)")
+) -> None:
+    """Run `cargo check` (optionally -p <project>) and show output in $EDITOR.
+
+    Use -h N to show head N lines, -t N to show tail N lines.
+    """
+    cmd = ["cargo", "check"]
+    if project:
+        cmd.extend(["-p", project])
+
+    try:
+        proc = _run(cmd, check=False)
+        out = proc.stdout or ""
+    except Exception:
+        typer.secho("❌ Failed to run cargo check (is cargo installed?).", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    lines = out.splitlines()
+    if head is not None and head > 0:
+        lines = lines[:head]
+    if tail is not None and tail > 0:
+        lines = lines[-tail:]
+
+    content = "\n".join(lines)
+    outdir = Path(os.path.expanduser("~/tmp"))
+    outdir.mkdir(parents=True, exist_ok=True)
+    outpath = outdir / f"ccheck-{_nowstamp()}.txt"
+    outpath.write_text(content, encoding="utf-8")
+
+    editor = os.environ.get("EDITOR") or "vi"
+    _open_in_editor(outpath, editor)
+
 @app.command(name="encode_and_copy")
 def encode_and_copy_cmd(
     text: str = typer.Argument(..., help="Text to base64-encode and copy to clipboard")

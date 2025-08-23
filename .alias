@@ -749,44 +749,7 @@ rust_clippy() {
  
 # cargo check
 ccheck() {
-  local mode=""
-  local lines=""
-  local project=""
-  local args=()
-
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      -h)
-        mode="head"
-        lines="$2"
-        shift 2
-        ;;
-      -t)
-        mode="tail"
-        lines="$2"
-        shift 2
-        ;;
-      -p)
-        project="$2"
-        shift 2
-        ;;
-      *)
-        args+=("$1")
-        shift
-        ;;
-    esac
-  done
-
-  local cmd="c check"
-  if [[ -n "$project" ]]; then
-    cmd+=" -p $project"
-  fi
-
-  if [[ -n "$mode" && -n "$lines" ]]; then
-    eval "$cmd" 2>&1 | "$mode" -n "$lines" | vi -
-  else
-    eval "$cmd" 2>&1 | vi -
-  fi
+  run_alias_py ccheck "$@"
 }
 
 
