@@ -127,20 +127,7 @@ fselect() {
 
 
 chezcrypt() {
-  if [ $# -lt 1 ]; then
-    echo "Usage: chezcrypt <relative_path_in_chezmoi_dir> [more_dirs...]"
-    return 1
-  fi
-
-  for target_dir in "$@"; do
-    if [ ! -d "$target_dir" ]; then
-      echo "❌ Directory not found: $target_dir"
-      continue
-    fi
-
-    echo "🔒 Encrypting all files in $target_dir"
-    find "$target_dir" -type f -exec chezmoi add --encrypt {} \;
-  done
+  run_alias_py chezcrypt "$@"
 }
 
 

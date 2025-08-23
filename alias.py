@@ -337,5 +337,54 @@ def chatmodes_copy_cmd(folder_name: str = typer.Argument(..., help="Target GitHu
         typer.secho(f"❌ Failed to copy chatmodes: {exc}", fg=typer.colors.RED)
         raise typer.Exit(1)
 
+@app.command(name="chezcrypt")
+def chezcrypt_cmd(dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be encrypted without running chezmoi"),
+                 targets: list[str] = typer.Argument(..., help="One or more target directories to encrypt")) -> None:
+    """Encrypt all files in the given directories using `chezmoi add --encrypt`.
+
+    For each provided directory, runs `find <dir> -type f -exec chezmoi add --encrypt {} \;`.
+    Use --dry-run to only print the commands that would run.
+    """
+    if not targets:
+        typer.secho("Usage: chezcrypt <relative_path_in_chezmoi_dir> [more_dirs...]", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    for target_dir in targets:
+        p = Path(target_dir).expanduser()
+        if not p.exists() or not p.is_dir():
+            typer.secho(f"❌ Directory not found: {target_dir}", fg=typer.colors.RED)
+            continue
+
+        typer.secho(f"🔒 Encrypting all files in {target_dir}", fg=typer.colors.CYAN)
+
+        # Build the find + chezmoi command
+        find_cmd = ["find", str(p), "-type", "f", "-print0"]
+
+        try:
+            # Gather files safely using NUL separator
+            proc = _run(find_cmd, check=True)
+            raw = proc.stdout
+            if not raw:
+                typer.secho(f"⚠️ No files found in {target_dir}", fg=typer.colors.YELLOW)
+                continue
+
+            # split by NUL; fallback to lines if necessary
+            files = [x for x in raw.split("\x00") if x]
+
+            if dry_run:
+                for f in files:
+                    typer.echo(f"chezmoi add --encrypt {f}")
+                continue
+
+            # Run chezmoi add --encrypt on each file
+            for f in files:
+                try:
+                    _run(["chezmoi", "add", "--encrypt", f])
+                except subprocess.CalledProcessError as exc:
+                    typer.secho(f"❌ chezmoi failed for {f}: {exc}", fg=typer.colors.RED)
+        except Exception as exc:
+            typer.secho(f"❌ Error processing {target_dir}: {exc}", fg=typer.colors.RED)
+            continue
+
 if __name__ == "__main__":
     app()
