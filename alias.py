@@ -604,7 +604,8 @@ def crun(
     content = "\n".join(lines)
     outdir = Path(os.path.expanduser("~/tmp"))
     outdir.mkdir(parents=True, exist_ok=True)
-    outpath = outdir / f"crun-{_nowstamp()}.txt"
+    branch_clean = _get_git_branch()
+    outpath = outdir / f"crun-{branch_clean}-{_nowstamp()}.txt"
     outpath.write_text(content, encoding="utf-8")
     typer.secho(f"✅ Wrote cargo output to: {outpath}", fg=typer.colors.GREEN)
     typer.echo("🖥️ Opening output in editor...")
