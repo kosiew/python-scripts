@@ -138,6 +138,41 @@ ${summary}
 * Ensure the output is actionable for a coding agent without unnecessary narrative.
 """
 
+
+# -------------------------
+# Template helpers
+# -------------------------
+
+def _read_local_template(filename: str) -> Optional[str]:
+    """Read a template file located next to this source file.
+
+    Returns the file contents if present, otherwise None.
+    """
+    try:
+        p = Path(__file__).with_name(filename)
+        if p.exists():
+            return p.read_text(encoding="utf-8")
+    except Exception:
+        pass
+    return None
+
+
+def _render_and_write(issue_id: str, url: str, prefix: str, tpl_text: str, summary_text: str, ts: str, no_open: bool, editor: Optional[str]) -> Path:
+    """Substitute variables into tpl_text, write to generated filename, and open editor unless suppressed.
+
+    Returns the output Path.
+    """
+    content = Template(tpl_text).safe_substitute(summary=summary_text, url=url, id=issue_id, timestamp=ts)
+
+    outpath = _gen_filename(issue_id, f"issue:{url}", prefix)
+    outpath.parent.mkdir(parents=True, exist_ok=True)
+    outpath.write_text(content, encoding="utf-8")
+    typer.secho(f"✅ Wrote: {outpath}", fg=typer.colors.GREEN)
+
+    if not no_open:
+        _open_in_editor(outpath, editor)
+    return outpath
+
 # -------------------------
 # Commands
 # -------------------------
@@ -2183,7 +2218,9 @@ def icask(
 @app.command(help="Generate strategic instructions using a provided template and write to icask file")
 def icask2(
     url: str = typer.Argument(..., help="GitHub issue/PR URL"),
+    comment: str = typer.Argument("", help="Optional reviewer comment to incorporate"),
     prefix: str = typer.Option("icask", "--prefix", "-p", help="Filename prefix"),
+    local_md: str = typer.Option("icask.md", "--local-md", help="Local template filename next to alias.py"),
     no_open: bool = typer.Option(False, "--no-open", help="Do not open the file in $EDITOR"),
     editor: Optional[str] = typer.Option(None, "--editor", "-e", help="Editor to open file"),
 ):
@@ -2199,30 +2236,36 @@ def icask2(
     if not summary_text:
         summary_text = "(Summary could not be auto-generated. Replace with 3–6 concise bullets: problem, scope, impact, constraints.)"
 
-    # Always use the local icask.md next to this source file; error if missing
-    local_md = Path(__file__).with_name("icask.md")
-    if local_md.exists():
-        tpl_text = local_md.read_text(encoding="utf-8")
-    else:
-        typer.secho("❌ Template 'icask.md' not found next to alias.py. Please create icask.md.", fg=typer.colors.RED)
+    # Rephrase optional reviewer comment and incorporate if present
+    rephrased = ""
+    if comment.strip():
+        if _which("llm"):
+            try:
+                rephrase_prompt = "Rephrase this reviewer note in 1–2 concise, professional sentences. Keep key constraints; avoid first person; do not quote verbatim."
+                proc = _run(["llm", "-s", rephrase_prompt], input=comment)
+                rephrased = proc.stdout.strip() if proc.stdout.strip() else comment
+            except Exception:
+                rephrased = comment
+        else:
+            rephrased = comment
+
+    if rephrased:
+        # Prepend reviewer note to the summary to make it visible in generated output
+        summary_text = f"Reviewer note: {rephrased}\n\n{summary_text}"
+
+    tpl_text = _read_local_template(local_md)
+    if tpl_text is None:
+        typer.secho(f"❌ Template '{local_md}' not found next to alias.py. Please create {local_md}.", fg=typer.colors.RED)
         raise typer.Exit(2)
 
-    # Substitute ${summary} (and other optional variables) and write file
-    content = Template(tpl_text).safe_substitute(summary=summary_text, url=url, id=issue_id, timestamp=ts)
-
-    outpath = _gen_filename(issue_id, f"issue:{url}", prefix)
-    outpath.parent.mkdir(parents=True, exist_ok=True)
-    outpath.write_text(content, encoding="utf-8")
-    typer.secho(f"✅ Wrote: {outpath}", fg=typer.colors.GREEN)
-
-    if not no_open:
-        _open_in_editor(outpath, editor)
+    _render_and_write(issue_id=issue_id, url=url, prefix=prefix, tpl_text=tpl_text, summary_text=summary_text, ts=ts, no_open=no_open, editor=editor)
 
 
 @app.command(help="Generate a structured triage file using a provided template and write to ictriage file")
 def ictriage2(
     url: str = typer.Argument(..., help="GitHub issue/PR URL"),
     prefix: str = typer.Option("ictriage", "--prefix", "-p", help="Filename prefix"),
+    local_md: str = typer.Option("ictriage.md", "--local-md", help="Local template filename next to alias.py"),
     no_open: bool = typer.Option(False, "--no-open", help="Do not open the file in $EDITOR"),
     editor: Optional[str] = typer.Option(None, "--editor", "-e", help="Editor to open file"),
 ):
@@ -2237,24 +2280,12 @@ def ictriage2(
     if not summary_text:
         summary_text = "(Summary could not be auto-generated. Replace with 3–6 concise bullets: problem, scope, impact, constraints.)"
 
-    # Always use the local ictriage.md next to this source file; error if missing
-    local_md = Path(__file__).with_name("ictriage.md")
-    if local_md.exists():
-        tpl_text = local_md.read_text(encoding="utf-8")
-    else:
-        typer.secho("❌ Template 'ictriage.md' not found next to alias.py. Please create ictriage.md.", fg=typer.colors.RED)
+    tpl_text = _read_local_template(local_md)
+    if tpl_text is None:
+        typer.secho(f"❌ Template '{local_md}' not found next to alias.py. Please create {local_md}.", fg=typer.colors.RED)
         raise typer.Exit(2)
 
-    # Substitute and write
-    content = Template(tpl_text).safe_substitute(summary=summary_text, url=url, id=issue_id, timestamp=ts)
-
-    outpath = _gen_filename(issue_id, f"issue:{url}", prefix)
-    outpath.parent.mkdir(parents=True, exist_ok=True)
-    outpath.write_text(content, encoding="utf-8")
-    typer.secho(f"✅ Wrote: {outpath}", fg=typer.colors.GREEN)
-
-    if not no_open:
-        _open_in_editor(outpath, editor)
+    _render_and_write(issue_id=issue_id, url=url, prefix=prefix, tpl_text=tpl_text, summary_text=summary_text, ts=ts, no_open=no_open, editor=editor)
 
 
 @app.command(help="Perform structured triage of GitHub issues with standardized output format")
