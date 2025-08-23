@@ -808,6 +808,28 @@ def gcopyhash() -> None:
     # fallback: print to stdout
     typer.echo(short_hash)
 
+
+@app.command(help="Copy current branch name to clipboard (gcopybranch)")
+def gcopybranch() -> None:
+    """Copy the current branch name to macOS clipboard (pbcopy) or print it.
+    """
+    try:
+        branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+    except Exception:
+        typer.secho("❌ Not a git repo or failed to get branch name.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    if sys.platform == "darwin" and _which("pbcopy"):
+        try:
+            p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
+            p.communicate(branch.encode())
+            typer.secho(f"🌿 Current branch name copied to clipboard: {branch}", fg=typer.colors.GREEN)
+            return
+        except Exception:
+            pass
+
+    typer.echo(branch)
+
 @app.command(name="chezcrypt")
 def chezcrypt_cmd(dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be encrypted without running chezmoi"),
                  targets: list[str] = typer.Argument(..., help="One or more target directories to encrypt")) -> None:

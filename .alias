@@ -404,10 +404,7 @@ gcopyhash() {
 }
  
 gcopybranch() {
-  local branch
-  branch=$(git rev-parse --abbrev-ref HEAD)
-  echo -n "$branch" | pbcopy
-  echo "🌿 Current branch name copied to clipboard: $branch"
+  run_alias_py gcopybranch "$@"
 }
 
 # create branch test with commit point
