@@ -422,10 +422,7 @@ gfilecommit() {
 
 # git commit unstaged files individually
 gfcommit() {
-  for file in $(git status --porcelain | awk '{print $2}'); do
-    echo "📄 Processing: $file"
-    gfilecommit "$file" || echo "⚠️ Skipped $file due to error"
-  done
+  run_alias_py gfcommit "$@"
 }
  
 

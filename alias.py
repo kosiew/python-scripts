@@ -913,6 +913,52 @@ def gfilecommit(file: str = typer.Argument(..., help="File path to stage and com
 
     typer.secho(f"✅ Committed {file} successfully!", fg=typer.colors.GREEN)
 
+
+@app.command(help="Commit each changed file individually using gfilecommit (gfcommit)")
+def gfcommit() -> None:
+    """Iterate over git status --porcelain changed files and run gfilecommit for each.
+
+    Mirrors the shell helper `gfcommit`. Skips and reports errors per-file.
+    """
+    try:
+        proc = _run(["git", "status", "--porcelain"], check=False)
+        out = (proc.stdout or "").strip()
+    except Exception:
+        typer.secho("❌ Not a git repository or git error.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    if not out:
+        typer.secho("ℹ️ No changed files detected.", fg=typer.colors.YELLOW)
+        raise typer.Exit(0)
+
+    # Parse second column (filename) from porcelain output; handle renamed entries
+    files = []
+    for line in out.splitlines():
+        # porcelain format: XY <file> or 'R100 from -> to'
+        parts = line.split()
+        if len(parts) >= 2:
+            # For rename, last token is destination
+            if '->' in line:
+                # take last token
+                fname = parts[-1]
+            else:
+                fname = parts[1]
+            files.append(fname)
+
+    for f in files:
+        typer.echo(f"📄 Processing: {f}")
+        try:
+            gfilecommit(f)
+        except SystemExit as se:
+            # gfilecommit uses raise typer.Exit; mimic shell behavior and continue
+            typer.secho(f"⚠️ Skipped {f} due to error", fg=typer.colors.YELLOW)
+            continue
+        except Exception:
+            typer.secho(f"⚠️ Skipped {f} due to error", fg=typer.colors.YELLOW)
+            continue
+
+    typer.secho("✅ Done! All files processed.", fg=typer.colors.GREEN)
+
 @app.command(name="chezcrypt")
 def chezcrypt_cmd(dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be encrypted without running chezmoi"),
                  targets: list[str] = typer.Argument(..., help="One or more target directories to encrypt")) -> None:
