@@ -350,9 +350,7 @@ gdb() {
 #   git diff --name-only "$branch" | vi -
 # }
 gdn() {
-  local branch="${1:-$(git_main_branch)}"
-  echo "🔍 Comparing against branch: $branch"
-  git diff --name-only "$branch" | vi -
+  run_alias_py gdn "$@"
 }
 
  

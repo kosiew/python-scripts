@@ -53,6 +53,36 @@ def _open_in_editor(path: Path, editor: Optional[str]) -> None:
     except Exception:
         typer.secho(f"⚠️ Failed to open editor '{ed}'. File saved: {path}", fg=typer.colors.YELLOW)
 
+
+def _git_main_branch() -> Optional[str]:
+    """Try to detect the repository's main branch name.
+
+    Preference order: 'main', 'master', remote origin HEAD, else None.
+    """
+    try:
+        # Prefer local branches if they exist
+        for name in ("main", "master"):
+            proc = _run(["git", "show-ref", f"refs/heads/{name}"], check=False)
+            if proc.returncode == 0:
+                return name
+
+        # Try origin/HEAD symbolic-ref
+        proc = _run(["git", "rev-parse", "--abbrev-ref", "origin/HEAD"], check=False)
+        out = (proc.stdout or "").strip()
+        if out and out != "origin/HEAD":
+            # rev-parse may return 'origin/main' → pick last segment
+            return out.split("/")[-1]
+
+        # Try remote show origin to parse HEAD branch
+        proc = _run(["git", "remote", "show", "origin"], check=False)
+        text = proc.stdout or ""
+        m = re.search(r"HEAD branch: (\S+)", text)
+        if m:
+            return m.group(1)
+    except Exception:
+        return None
+    return None
+
 # -------------------------
 # Filename & summaries
 # -------------------------
@@ -425,6 +455,34 @@ def gdb(branch: str = typer.Argument(..., help="Branch name to delete")) -> None
         raise typer.Exit(1)
 
     typer.secho(f"✅ Deleted branch '{branch}' locally and on origin.", fg=typer.colors.GREEN)
+
+
+@app.command(help="Show files changed compared to a branch (gdn)")
+def gdn(branch: Optional[str] = typer.Argument(None, help="Branch to compare against (defaults to repo main)")) -> None:
+    """Run `git diff --name-only <branch>` and open the list in $EDITOR (falls back to vi).
+
+    If branch is omitted, attempt to detect the repo's main branch.
+    """
+    b = branch
+    if not b:
+        b = _git_main_branch() or "main"
+
+    typer.secho(f"🔍 Comparing against branch: {b}", fg=typer.colors.CYAN)
+
+    try:
+        proc = _run(["git", "diff", "--name-only", b])
+        output = proc.stdout or ""
+    except Exception as exc:
+        typer.secho(f"❌ git diff failed: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Write to a temporary file and open in editor
+    tmp = Path(os.path.expanduser("~/tmp"))
+    tmp.mkdir(parents=True, exist_ok=True)
+    outpath = tmp / f"gdn-{b}-{_nowstamp()}.txt"
+    outpath.write_text(output, encoding="utf-8")
+    editor = os.environ.get("EDITOR") or "vi"
+    _open_in_editor(outpath, editor)
 
 @app.command(name="chezcrypt")
 def chezcrypt_cmd(dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be encrypted without running chezmoi"),
