@@ -867,6 +867,94 @@ def gcopybranch() -> None:
     typer.echo(branch)
 
 
+@app.command(help="Apply a patch from the clipboard (handles fenced code blocks) (gappdiff)")
+def gappdiff(dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Check whether patch would apply without applying")) -> None:
+    """Read clipboard (macOS pbpaste), strip code fences and non-patch text, save to a temp file,
+    and apply with `git apply --3way --index`. Use --dry-run to only check with --3way --check.
+    """
+    if sys.platform != "darwin":
+        typer.secho("❌ gappdiff currently supports macOS (pbpaste).", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    if not _which("pbpaste"):
+        typer.secho("❌ pbpaste not found in PATH.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    import tempfile
+
+    tmpdir = Path(tempfile.mkdtemp(prefix="gappdiff."))
+    patch_path = tmpdir / "clip.patch"
+
+    # Read clipboard and filter: drop fenced blocks and everything before first 'diff --git'
+    try:
+        proc = _run(["pbpaste"], check=False)
+        clip = proc.stdout or ""
+    except Exception:
+        clip = ""
+
+    if not clip:
+        typer.secho("❌ Clipboard empty or pbpaste failed.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Filter similar to shell awk: skip fenced code blocks and start printing at first 'diff --git'
+    lines = clip.splitlines()
+    out_lines = []
+    in_fence = False
+    started = False
+    for ln in lines:
+        if ln.startswith("```") or ln.startswith("~~~"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if not started and ln.startswith("diff --git "):
+            started = True
+        if started:
+            out_lines.append(ln)
+
+    patch_text = "\n".join(out_lines)
+    # Normalize CRLF
+    patch_text = patch_text.replace("\r\n", "\n").replace("\r", "\n")
+
+    if not patch_text.strip():
+        typer.secho("❌ Clipboard doesn’t contain a valid patch (no 'diff --git').", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    patch_path.write_text(patch_text, encoding="utf-8")
+
+    # Determine repo root
+    try:
+        root = _run(["git", "rev-parse", "--show-toplevel"]).stdout.strip()
+    except Exception:
+        typer.secho("❌ Repo root not found; ensure you're inside a git repo.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    typer.secho("📋 Patch preview (first 20 lines):", fg=typer.colors.CYAN)
+    for ln in patch_text.splitlines()[:20]:
+        typer.echo(ln)
+
+    if dry_run:
+        typer.secho("🧪 Dry-run: checking with --3way…", fg=typer.colors.CYAN)
+        try:
+            _run(["git", "apply", "--3way", "--index", "--check", str(patch_path)], check=False)
+            typer.secho("✅ Patch would apply cleanly.", fg=typer.colors.GREEN)
+            raise typer.Exit(0)
+        except Exception:
+            typer.secho("❌ Patch check failed.", fg=typer.colors.RED)
+            typer.secho(f"   Try: (cd \"{root}\" && git apply --3way --reject \"{patch_path}\")", fg=typer.colors.YELLOW)
+            raise typer.Exit(1)
+
+    typer.secho("📥 Applying with --3way…", fg=typer.colors.CYAN)
+    try:
+        _run(["git", "apply", "--3way", "--index", str(patch_path)])
+        typer.secho("🎉 Applied. Changes are staged.", fg=typer.colors.GREEN)
+        raise typer.Exit(0)
+    except Exception:
+        typer.secho("❌ Apply failed.", fg=typer.colors.RED)
+        typer.secho(f"   Try: (cd \"{root}\" && git apply --3way --reject \"{patch_path}\")", fg=typer.colors.YELLOW)
+        raise typer.Exit(1)
+
+
 @app.command(help="Stage a single file and commit with an AI-generated message (gfilecommit)")
 def gfilecommit(file: str = typer.Argument(..., help="File path to stage and commit")) -> None:
     """Stage the given file, generate a commit message from the staged diff using `llm`, and commit.

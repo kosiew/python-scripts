@@ -432,72 +432,9 @@ gsplit() {
 
 
 # Apply a patch from the clipboard (handles heredoc-wrapped commands too)
-
+# Build clean patch: drop code fences, start at first 'diff --git', normalize CRLF
 gappdiff() {
-  emulate -L zsh
-  setopt localoptions pipefail   # no errexit here
-
-  local CHECK=""
-  if [[ "${1:-}" == "-n" || "${1:-}" == "--dry-run" ]]; then
-    CHECK="--check"
-    shift || true
-  fi
-
-  if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    echo "❌ Not inside a git repository."; return 1
-  fi
-  if ! command -v pbpaste >/dev/null 2>&1; then
-    echo "❌ pbpaste not found (macOS required)."; return 1
-  fi
-
-  # Temp patch file
-  local tmpdir patch_path
-  tmpdir="$(mktemp -d -t gappdiff.XXXXXX)" || { echo "❌ mktemp failed"; return 1; }
-  patch_path="$tmpdir/clip.patch"
-  trap 'rm -rf "$tmpdir"' RETURN
-
-  # Build clean patch: drop code fences, start at first 'diff --git', normalize CRLF
-  if ! pbpaste | awk '
-      BEGIN { in_fence=0; started=0 }
-      /^```/ || /^~~~/ { in_fence = !in_fence; next }
-      { if (in_fence) next }
-      /^diff --git / { started=1 }
-      { if (started) print }
-    ' | tr -d "\r" > "$patch_path"
-  then
-    echo "❌ Failed to read/process clipboard."; return 1
-  fi
-
-  if ! grep -qE '^diff --git ' "$patch_path"; then
-    echo "❌ Clipboard doesn’t contain a valid patch (no 'diff --git')."; return 1
-  fi
-
-  local root; root="$(git rev-parse --show-toplevel)" || { echo "❌ Repo root not found"; return 1; }
-
-  echo "📋 Patch preview (first 20 lines):"
-  echo "----------------------------------"; head -n 20 "$patch_path"; echo "----------------------------------"
-
-  if [[ -n "$CHECK" ]]; then
-    echo "🧪 Dry-run: checking with --3way…"
-    if ( cd "$root" && git apply --3way --index $CHECK "$patch_path" ); then
-      echo "✅ Patch would apply cleanly."
-      return 0
-    else
-      echo "❌ Patch check failed."
-      echo "   Try: (cd \"$root\" && git apply --3way --reject \"$patch_path\")"
-      return 1
-    fi
-  else
-    echo "📥 Applying with --3way…"
-    if ( cd "$root" && git apply --3way --index "$patch_path" ); then
-      echo "🎉 Applied. Changes are staged."
-      return 0
-    else
-      echo "❌ Apply failed."
-      echo "   Try: (cd \"$root\" && git apply --3way --reject \"$patch_path\")"
-      return 1
-    fi
-  fi
+  run_alias_py gappdiff "$@"
 }
 
 
