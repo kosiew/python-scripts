@@ -479,24 +479,7 @@ gs() {
 }
 
 grmuntracked() {
-  local files
-  files=$(git ls-files --others --exclude-standard)
-
-  if [ -z "$files" ]; then
-    echo "✅ No untracked files to remove."
-    return
-  fi
-
-  echo "🚨 The following untracked files will be removed:"
-  echo "$files" | sed 's/^/   /'
-
-  read "confirm?❓ Are you sure you want to delete these files? [y/N] "
-  if [[ "$confirm" =~ ^[Yy]$ ]]; then
-    echo "$files" | xargs rm -rf
-    echo "🗑️ Untracked files deleted."
-  else
-    echo "❌ Aborted. No files were deleted."
-  fi
+  run_alias_py grmuntracked "$@"
 }
  
 

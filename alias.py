@@ -378,6 +378,56 @@ def gs(args: List[str] = typer.Argument(None, help="Arguments forwarded: [commit
     editor = os.environ.get("EDITOR") or "vi"
     _open_in_editor(outpath, editor)
 
+
+@app.command(name="grmuntracked", help="Remove untracked files (asks for confirmation)")
+def grmuntracked(dry_run: bool = typer.Option(False, "--dry-run", help="Show files without deleting")) -> None:
+    """List untracked files (git ls-files --others --exclude-standard) and delete them after confirmation.
+
+    Use --dry-run to only show the list.
+    """
+    try:
+        proc = _run(["git", "ls-files", "--others", "--exclude-standard"], check=False)
+        out = (proc.stdout or "").strip()
+    except Exception:
+        typer.secho("❌ Not a git repository or git error.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    if not out:
+        typer.secho("✅ No untracked files to remove.", fg=typer.colors.GREEN)
+        raise typer.Exit(0)
+
+    files = out.splitlines()
+
+    typer.secho("🚨 The following untracked files will be removed:", fg=typer.colors.YELLOW)
+    for f in files:
+        typer.echo(f"   {f}")
+
+    if dry_run:
+        raise typer.Exit(0)
+
+    if not typer.confirm("Are you sure you want to delete these files? [y/N]", default=False):
+        typer.secho("❌ Aborted. No files were deleted.", fg=typer.colors.RED)
+        raise typer.Exit(0)
+
+    import shutil
+
+    failed = False
+    for f in files:
+        p = Path(f)
+        try:
+            if p.is_dir():
+                shutil.rmtree(p)
+            elif p.exists():
+                p.unlink()
+        except Exception as exc:
+            typer.secho(f"❌ Failed to remove {f}: {exc}", fg=typer.colors.RED)
+            failed = True
+
+    if not failed:
+        typer.secho("🗑️ Untracked files deleted.", fg=typer.colors.GREEN)
+    else:
+        typer.secho("⚠️ Some files failed to delete; check errors above.", fg=typer.colors.YELLOW)
+
 @app.command(name="encode_and_copy")
 def encode_and_copy_cmd(
     text: str = typer.Argument(..., help="Text to base64-encode and copy to clipboard")
