@@ -355,7 +355,7 @@ gdn() {
 
  
 gcom() {
-  git checkout "$(git_main_branch)"
+  run_alias_py gcom "$@"
 }
 
 

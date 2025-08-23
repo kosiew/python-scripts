@@ -484,6 +484,22 @@ def gdn(branch: Optional[str] = typer.Argument(None, help="Branch to compare aga
     editor = os.environ.get("EDITOR") or "vi"
     _open_in_editor(outpath, editor)
 
+
+@app.command(help="Checkout the repository's main branch (gcom)")
+def gcom() -> None:
+    """Checkout the repository's main branch determined by `_git_main_branch()`.
+
+    Prints progress and exits non-zero on failure.
+    """
+    branch = _git_main_branch() or "main"
+    typer.secho(f"🔁 Switching to main branch: {branch}", fg=typer.colors.CYAN)
+    try:
+        _run(["git", "checkout", branch])
+    except Exception as exc:
+        typer.secho(f"❌ Failed to switch to {branch}: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+    typer.secho(f"✅ Checked out {branch}", fg=typer.colors.GREEN)
+
 @app.command(name="chezcrypt")
 def chezcrypt_cmd(dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be encrypted without running chezmoi"),
                  targets: list[str] = typer.Argument(..., help="One or more target directories to encrypt")) -> None:
