@@ -8,7 +8,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from string import Template
-from typing import Optional
+from typing import Optional, List
 
 import typer
 
@@ -404,7 +404,7 @@ def gsm() -> None:
 
     typer.echo("🔄 Syncing with upstream...")
     try:
-        _run(["gsync"])
+        gsync()
     except Exception:
         typer.secho("❌ Failed to sync with upstream.", fg=typer.colors.RED)
         # attempt to return to original branch
@@ -526,6 +526,158 @@ def gsync() -> None:
         raise typer.Exit(1)
 
     typer.secho(f"✅ Synced with upstream/{branch}", fg=typer.colors.GREEN)
+
+
+@app.command(help="Squash a range of commits into one and apply to a target branch (gsquash)")
+def gsquash(
+    c1: str = typer.Argument(..., help="Oldest commit in range (ancestor)"),
+    c2: str = typer.Argument(..., help="Newest commit in range (descendent)"),
+    to: Optional[str] = typer.Option(None, "-t", "--to", help="Target branch to update (default: current branch)"),
+    force_push: bool = typer.Option(False, "-F", "--force-push", help="Force-push target branch to its upstream after rewrite"),
+    keep_temp: bool = typer.Option(False, "-k", "--keep-temp", help="Keep the temporary squash branch"),
+    message: Optional[str] = typer.Option(None, "-m", "--message", help="Commit message for the squashed commit"),
+) -> None:
+    """Squash commits in the range c1^..c2 into one commit and apply back to a target branch.
+
+    Mirrors the shell `gsquash` helper. Be careful: this rewrites history.
+    """
+    # Basic validations
+    try:
+        _run(["git", "rev-parse", "--git-dir"])
+    except Exception:
+        typer.secho("❌ Not a git repo.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # verify commits exist
+    if _run(["git", "rev-parse", "--verify", c1], check=False).returncode != 0:
+        typer.secho(f"❌ Commit {c1} not found.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+    if _run(["git", "rev-parse", "--verify", c2], check=False).returncode != 0:
+        typer.secho(f"❌ Commit {c2} not found.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # ensure c1 is ancestor of c2
+    if _run(["git", "merge-base", "--is-ancestor", c1, c2], check=False).returncode != 0:
+        typer.secho(f"❌ {c1} is not an ancestor of {c2}.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    orig_branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+    target_branch = to or orig_branch
+
+    # Require clean state
+    if _run(["git", "diff", "--quiet"], check=False).returncode != 0 or _run(["git", "diff", "--cached", "--quiet"], check=False).returncode != 0:
+        typer.secho("❌ Working tree or index not clean. Commit/stash first.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    sha_head = _run(["git", "rev-parse", "HEAD"]).stdout.strip()
+    sha_c2 = _run(["git", "rev-parse", c2]).stdout.strip()
+    if sha_head != sha_c2:
+        short = _run(["git", "rev-parse", "--short", c2]).stdout.strip()
+        tmp_branch = f"squash-{short}"
+        typer.secho(f"ℹ️  Creating temp branch {tmp_branch} at {c2}…", fg=typer.colors.CYAN)
+        try:
+            _run(["git", "switch", "-c", tmp_branch, c2])
+        except Exception:
+            typer.secho("❌ Failed to switch to temp branch.", fg=typer.colors.RED)
+            raise typer.Exit(1)
+    else:
+        tmp_branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+
+    # Count commits
+    proc = _run(["git", "rev-list", "--count", f"{c1}^..{c2}"], check=False)
+    count = int((proc.stdout or "0").strip() or 0)
+    if count < 1:
+        typer.secho(f"⚠️ Nothing to squash in {c1}^..{c2}.", fg=typer.colors.YELLOW)
+        if tmp_branch != orig_branch:
+            _run(["git", "switch", orig_branch], check=False)
+        raise typer.Exit(1)
+
+    typer.secho(f"🔄 Squashing {count} commit(s) in {c1}^..{c2} into one on {tmp_branch}.", fg=typer.colors.CYAN)
+    if not typer.confirm("👉 History will be rewritten. Continue?", default=False):
+        typer.secho("❌ Cancelled.", fg=typer.colors.RED)
+        _run(["git", "switch", orig_branch], check=False)
+        raise typer.Exit(1)
+
+    # Stage the exact range as index content, then commit once
+    try:
+        _run(["git", "reset", "--soft", f"{c1}^"])
+    except Exception:
+        typer.secho("❌ reset --soft failed.", fg=typer.colors.RED)
+        _run(["git", "switch", orig_branch], check=False)
+        raise typer.Exit(1)
+
+    # Commit
+    commit_msg = message or f"chore: squash {c1}..{c2}"
+    try:
+        _run(["git", "commit", "-m", commit_msg])
+    except Exception:
+        typer.secho("❌ Commit failed.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    squashed_sha = _run(["git", "rev-parse", "HEAD"]).stdout.strip()
+    typer.secho(f"✅ Created squashed commit: {squashed_sha}", fg=typer.colors.GREEN)
+
+    # apply back to target branch
+    if _run(["git", "show-ref", "--verify", f"refs/heads/{target_branch}"], check=False).returncode != 0:
+        typer.secho(f"❌ Target branch '{target_branch}' not found.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Does target contain c2?
+    if _run(["git", "merge-base", "--is-ancestor", c2, f"refs/heads/{target_branch}"], check=False).returncode == 0:
+        # Target contains c2
+        if _run(["git", "rev-parse", target_branch]).stdout.strip() == sha_c2:
+            typer.secho(f"🔁 Moving {target_branch} to squashed commit (replacing {c2})…", fg=typer.colors.CYAN)
+            _run(["git", "switch", target_branch])
+            _run(["git", "reset", "--hard", squashed_sha])
+        else:
+            typer.secho("🪄 Rebasing commits after {c2} on top of squashed commit…", fg=typer.colors.CYAN)
+            _run(["git", "switch", target_branch])
+            try:
+                _run(["git", "rebase", "--onto", squashed_sha, c2])
+            except Exception:
+                typer.secho("❌ Rebase failed.", fg=typer.colors.RED)
+                raise typer.Exit(1)
+    else:
+        # Target doesn't contain c2 → cherry-pick the squashed change
+        typer.secho(f"ℹ️  {target_branch} doesn’t contain {c2}; cherry-picking squashed commit…", fg=typer.colors.CYAN)
+        _run(["git", "switch", target_branch])
+        try:
+            _run(["git", "cherry-pick", squashed_sha])
+        except Exception:
+            # If cherry-pick produces no changes, create empty commit with same message
+            if _run(["git", "diff", "--cached", "--quiet"], check=False).returncode == 0 and _run(["git", "diff", "--quiet"], check=False).returncode == 0:
+                typer.secho("⚠️ Cherry-pick produced no changes. Creating an empty commit to preserve history.", fg=typer.colors.YELLOW)
+                # Get original message
+                orig_msg = _run(["git", "log", "-1", "--pretty=%B", squashed_sha]).stdout.strip()
+                _run(["git", "commit", "--allow-empty", "-m", orig_msg])
+            else:
+                typer.secho("❌ Cherry-pick failed with conflicts. Resolve and run: git cherry-pick --continue", fg=typer.colors.RED)
+                raise typer.Exit(1)
+
+    # Optional force-push
+    if force_push:
+        # Only attempt if upstream exists
+        if _run(["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], check=False).returncode == 0:
+            typer.secho(f"⤴️  Force-pushing {target_branch} to its upstream…", fg=typer.colors.CYAN)
+            try:
+                _run(["git", "push", "-f"])
+            except Exception:
+                typer.secho("❌ Push failed.", fg=typer.colors.RED)
+                raise typer.Exit(1)
+        else:
+            typer.secho(f"⚠️ No upstream set for {target_branch}. Skipping push.", fg=typer.colors.YELLOW)
+
+    # Cleanup temp branch
+    if not keep_temp and tmp_branch != target_branch and tmp_branch != orig_branch:
+        _run(["git", "branch", "-D", tmp_branch], check=False)
+        typer.secho(f"🧹 Deleted temp branch {tmp_branch}.", fg=typer.colors.GREEN)
+
+    # Return user to target (or original if same)
+    cur = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+    if target_branch != cur:
+        _run(["git", "switch", target_branch], check=False)
+
+    typer.secho(f"🎯 Done on {target_branch}. (If previously pushed, consider: git push -f)", fg=typer.colors.GREEN)
 
 @app.command(name="chezcrypt")
 def chezcrypt_cmd(dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be encrypted without running chezmoi"),
