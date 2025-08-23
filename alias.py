@@ -2250,7 +2250,7 @@ def icask(
     url: str = typer.Argument(..., help="GitHub issue/PR URL"),
     comment: str = typer.Argument("", help="Optional reviewer comment to incorporate"),
     prefix: str = typer.Option("icask", "--prefix", "-p", help="Filename prefix"),
-    local_md: str = typer.Option("icask.md", "--local-md", help="Local template filename next to alias.py"),
+    local_md: str = typer.Option("icask02.md", "--local-md", help="Local template filename next to alias.py"),
     no_open: bool = typer.Option(False, "--no-open", help="Do not open the file in $EDITOR"),
     editor: Optional[str] = typer.Option(None, "--editor", "-e", help="Editor to open file"),
 ):
@@ -2295,7 +2295,7 @@ def icask(
 def ictriage(
     url: str = typer.Argument(..., help="GitHub issue/PR URL"),
     prefix: str = typer.Option("ictriage", "--prefix", "-p", help="Filename prefix"),
-    local_md: str = typer.Option("ictriage.md", "--local-md", help="Local template filename next to alias.py"),
+    local_md: str = typer.Option("ictriage02.md", "--local-md", help="Local template filename next to alias.py"),
     no_open: bool = typer.Option(False, "--no-open", help="Do not open the file in $EDITOR"),
     editor: Optional[str] = typer.Option(None, "--editor", "-e", help="Editor to open file"),
 ):
