@@ -360,18 +360,7 @@ gcom() {
 
 
 gsync() {
-  local branch
-  branch=$(git_main_branch)
-
-  if [ -z "$branch" ]; then
-    echo "❌ Could not determine upstream main branch."
-    return 1
-  fi
-
-  echo "🌀 Syncing with upstream/$branch..."
-  git fetch upstream || return 1
-  git checkout "$branch" || return 1
-  git reset --hard "upstream/$branch"
+  run_alias_py gsync "$@"
 }
 
 # gsync() {

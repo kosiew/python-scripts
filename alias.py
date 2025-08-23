@@ -397,7 +397,7 @@ def gsm() -> None:
 
     typer.echo("🔁 Switching to main branch using gcom...")
     try:
-        _run(["gcom"])
+        gcom()
     except Exception:
         typer.secho("❌ Failed to switch to main branch.", fg=typer.colors.RED)
         raise typer.Exit(1)
@@ -499,6 +499,33 @@ def gcom() -> None:
         typer.secho(f"❌ Failed to switch to {branch}: {exc}", fg=typer.colors.RED)
         raise typer.Exit(1)
     typer.secho(f"✅ Checked out {branch}", fg=typer.colors.GREEN)
+
+
+@app.command(help="Sync local main branch with upstream (gsync)")
+def gsync() -> None:
+    """Fetch from 'upstream', checkout the main branch, and hard-reset to upstream/<branch>.
+
+    Mirrors the shell `gsync` helper: determines the main branch then runs:
+      git fetch upstream
+      git checkout <branch>
+      git reset --hard upstream/<branch>
+    """
+    branch = _git_main_branch()
+    if not branch:
+        typer.secho("❌ Could not determine upstream main branch.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    typer.secho(f"🌀 Syncing with upstream/{branch}...", fg=typer.colors.CYAN)
+
+    try:
+        _run(["git", "fetch", "upstream"])
+        _run(["git", "checkout", branch])
+        _run(["git", "reset", "--hard", f"upstream/{branch}"])
+    except subprocess.CalledProcessError as exc:
+        typer.secho(f"❌ gsync failed: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    typer.secho(f"✅ Synced with upstream/{branch}", fg=typer.colors.GREEN)
 
 @app.command(name="chezcrypt")
 def chezcrypt_cmd(dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be encrypted without running chezmoi"),
