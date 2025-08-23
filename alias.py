@@ -1253,20 +1253,23 @@ def gtest(commit_point: Optional[str] = typer.Argument(None, help="Commit point 
 def gcopyhash() -> None:
     """Copy the short HEAD commit hash to the macOS clipboard (pbcopy) or print it.
     """
+    typer.secho("🔍 Retrieving short HEAD commit hash...", fg=typer.colors.CYAN)
     try:
         short_hash = _run(["git", "rev-parse", "--short", "HEAD"]).stdout.strip()
+        typer.secho(f"✅ Found hash: {short_hash}", fg=typer.colors.GREEN)
     except Exception:
         typer.secho("❌ Not a git repo or failed to get HEAD hash.", fg=typer.colors.RED)
         raise typer.Exit(1)
 
     if sys.platform == "darwin" and _which("pbcopy"):
         try:
+            typer.echo("📋 Copying short hash to clipboard...")
             p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
             p.communicate(short_hash.encode())
-            typer.secho(f"📋 Short commit hash copied to clipboard: {short_hash}", fg=typer.colors.GREEN)
+            typer.secho(f"✅ Short commit hash copied to clipboard: {short_hash}", fg=typer.colors.GREEN)
             return
         except Exception:
-            pass
+            typer.secho("⚠️ Failed to copy to clipboard; falling back to printing.", fg=typer.colors.YELLOW)
 
     # fallback: print to stdout
     typer.echo(short_hash)
@@ -1276,20 +1279,23 @@ def gcopyhash() -> None:
 def gcopybranch() -> None:
     """Copy the current branch name to macOS clipboard (pbcopy) or print it.
     """
+    typer.secho("🔍 Retrieving current branch name...", fg=typer.colors.CYAN)
     try:
         branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+        typer.secho(f"✅ Current branch: {branch}", fg=typer.colors.GREEN)
     except Exception:
         typer.secho("❌ Not a git repo or failed to get branch name.", fg=typer.colors.RED)
         raise typer.Exit(1)
 
     if sys.platform == "darwin" and _which("pbcopy"):
         try:
+            typer.echo("📋 Copying branch name to clipboard...")
             p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
             p.communicate(branch.encode())
-            typer.secho(f"🌿 Current branch name copied to clipboard: {branch}", fg=typer.colors.GREEN)
+            typer.secho(f"✅ Current branch name copied to clipboard: {branch}", fg=typer.colors.GREEN)
             return
         except Exception:
-            pass
+            typer.secho("⚠️ Failed to copy to clipboard; falling back to printing.", fg=typer.colors.YELLOW)
 
     typer.echo(branch)
 
