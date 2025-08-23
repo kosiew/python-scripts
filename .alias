@@ -920,13 +920,7 @@ iask() {
 }
 
 imuse() {
-  if [ $# -ne 1 ]; then
-    echo "Usage: imuse <github-issue-url>"
-    return 1
-  fi
-  _process_issue "$1" \
-    "Reflect on this issue using clear headings, bullet points and illustrative diagrams to explore key aspects and relationships." \
-    "imuse"
+  run_alias_py imuse "$@"
 }
 
 itry() {

@@ -2258,6 +2258,28 @@ def iask(
     issue_to_file(url=url, prompt=question, prefix="iask", no_open=no_open, editor=editor)
 
 
+@app.command(help="Reflect on GitHub issue with analysis of key aspects and relationships")
+def imuse(
+    url: str = typer.Argument(..., help="GitHub issue/PR URL"),
+    no_open: bool = typer.Option(False, "--no-open", help="Do not open the file in $EDITOR"),
+    editor: Optional[str] = typer.Option(None, "--editor", "-e", help="Editor to open file"),
+):
+    """
+    Reflect on a GitHub issue with analysis of key aspects and relationships.
+    
+    This command extracts the issue context and provides thoughtful reflection using
+    clear headings, bullet points, and illustrative diagrams to explore the issue's
+    various aspects and their interconnections.
+    """
+    prompt = (
+        "Reflect on this issue using clear headings, bullet points and illustrative diagrams "
+        "to explore key aspects and relationships."
+    )
+    
+    # Reuse the existing issue_to_file functionality
+    issue_to_file(url=url, prompt=prompt, prefix="imuse", no_open=no_open, editor=editor)
+
+
 if __name__ == "__main__":
     app()
 
