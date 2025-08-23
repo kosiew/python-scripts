@@ -475,21 +475,7 @@ gdiff() {
 
 
 gs() {
-  if [ $# -eq 1 ]; then
-    echo "📊 Showing diff stat between working tree and: $1"
-    git diff --stat "$1" 2>&1 | vi -
-  elif [ $# -eq 2 ]; then
-    echo "📊 Showing diff stat between: $1 ↔ $2"
-    git diff --stat "$1" "$2" 2>&1 | vi -
-  elif [ $# -eq 0 ]; then
-    local default_branch
-    default_branch=$(git_main_branch)
-    echo "📊 No arguments provided. Showing diff stat against default branch: $default_branch"
-    git diff --stat "$default_branch" 2>&1 | vi -
-  else
-    echo "Usage: gs <commit_early> [<commit_late>]"
-    return 1
-  fi
+  run_alias_py gs "$@"
 }
 
 grmuntracked() {

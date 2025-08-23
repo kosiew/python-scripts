@@ -340,6 +340,44 @@ def gdiff(args: List[str] = typer.Argument(None, help="Arguments forwarded to gi
     editor = os.environ.get("EDITOR") or "vi"
     _open_in_editor(outpath, editor)
 
+
+@app.command(help="Show git diff --stat for commits or working tree (gs)")
+def gs(args: List[str] = typer.Argument(None, help="Arguments forwarded: [commit_early] [commit_late]")) -> None:
+    """Show `git diff --stat` in three modes:
+      - gs <commit>           # working tree vs commit
+      - gs <a> <b>            # diff stat between a and b
+      - gs                    # diff stat vs repo main
+    """
+    items = args or []
+    if len(items) == 1:
+        typer.secho(f"📊 Showing diff stat between working tree and: {items[0]}", fg=typer.colors.CYAN)
+        cmd = ["git", "diff", "--stat", items[0]]
+    elif len(items) == 2:
+        typer.secho(f"📊 Showing diff stat between: {items[0]} ↔ {items[1]}", fg=typer.colors.CYAN)
+        cmd = ["git", "diff", "--stat", items[0], items[1]]
+    elif len(items) == 0:
+        default_branch = _git_main_branch() or "main"
+        typer.secho(f"📊 No arguments provided. Showing diff stat against default branch: {default_branch}", fg=typer.colors.CYAN)
+        cmd = ["git", "diff", "--stat", default_branch]
+    else:
+        typer.secho("Usage: gs <commit_early> [<commit_late>]", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    try:
+        proc = _run(cmd, check=False)
+        output = proc.stdout or ""
+    except Exception:
+        typer.secho("❌ git diff --stat failed or not a repository.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    outdir = Path(os.path.expanduser("~/tmp"))
+    outdir.mkdir(parents=True, exist_ok=True)
+    outpath = outdir / f"gs-{_nowstamp()}.txt"
+    outpath.write_text(output, encoding="utf-8")
+
+    editor = os.environ.get("EDITOR") or "vi"
+    _open_in_editor(outpath, editor)
+
 @app.command(name="encode_and_copy")
 def encode_and_copy_cmd(
     text: str = typer.Argument(..., help="Text to base64-encode and copy to clipboard")
