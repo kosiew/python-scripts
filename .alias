@@ -411,24 +411,7 @@ gcopybranch() {
 
 
 gtest() {
-  local commit_point="$1"
-
-  if [ -z "$commit_point" ]; then
-    echo "⚠️  No commit point provided. Defaulting to latest commit (HEAD)."
-    commit_point="HEAD"
-  fi
-
-  local current_branch
-  current_branch=$(git rev-parse --abbrev-ref HEAD)
-
-  if [ "$current_branch" = "test" ]; then
-    echo "🔄 Currently on 'test' branch. Checking out original branch..."
-    g cob || return 1
-  fi
-
-  echo "🔥 Recreating 'test' branch from: $commit_point"
-  g bd test 2>/dev/null || true
-  g co -b test "$commit_point"
+  run_alias_py gtest "$@"
 }
 
 

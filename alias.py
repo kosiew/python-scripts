@@ -786,6 +786,42 @@ def gacommit(args: List[str] = typer.Argument(None)) -> None:
         _run([sys.executable, __file__, "gcommit"])
 
 
+    @app.command(help="Recreate 'test' branch from a commit point (gtest)")
+    def gtest(commit_point: Optional[str] = typer.Argument(None, help="Commit point (default: HEAD)")) -> None:
+        """Recreate a 'test' branch from the given commit point (defaults to HEAD).
+
+        If currently on 'test', attempt to switch back to the previous branch before recreating.
+        """
+        cp = commit_point or "HEAD"
+
+        try:
+            current_branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+        except Exception:
+            typer.secho("❌ Not a git repository.", fg=typer.colors.RED)
+            raise typer.Exit(1)
+
+        if current_branch == "test":
+            typer.secho("🔄 Currently on 'test' branch. Trying to checkout previous branch...", fg=typer.colors.YELLOW)
+            # Attempt to get previous branch from reflog or @{-1}
+            try:
+                prev = _run(["git", "rev-parse", "--abbrev-ref", "@{-1}"], check=False).stdout.strip()
+                if prev:
+                    _run(["git", "checkout", prev])
+            except Exception:
+                pass
+
+        typer.secho(f"🔥 Recreating 'test' branch from: {cp}", fg=typer.colors.CYAN)
+        # Delete existing test branch if present
+        _run(["git", "branch", "-D", "test"], check=False)
+        try:
+            _run(["git", "checkout", "-b", "test", cp])
+        except Exception as exc:
+            typer.secho(f"❌ Failed to create test branch: {exc}", fg=typer.colors.RED)
+            raise typer.Exit(1)
+
+        typer.secho("✅ 'test' branch recreated.", fg=typer.colors.GREEN)
+
+
 @app.command(help="Copy short HEAD commit hash to clipboard (gcopyhash)")
 def gcopyhash() -> None:
     """Copy the short HEAD commit hash to the macOS clipboard (pbcopy) or print it.
