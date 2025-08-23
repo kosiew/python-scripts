@@ -72,7 +72,4 @@ Provide a **high-level action plan** to fix the issue:
 
 ---
 
-✨ **End Goal:** Deliver a clear, actionable roadmap for maintainers/contributors to resolve the issue efficiently.
-
-
 ✨ **End Goal:** Produce a clear roadmap for maintainers/contributors to either resolve or reclassify the issue efficiently, without ambiguity.
