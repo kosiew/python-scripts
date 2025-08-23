@@ -507,20 +507,25 @@ def rust_clippy() -> None:
     """
     script = Path("ci/scripts/rust_clippy.sh")
     if script.exists() and os.access(script, os.X_OK):
-        typer.secho("👋 running datafusion rust_clippy", fg=typer.colors.CYAN)
+        typer.secho("👋 running datafusion rust_clippy script...", fg=typer.colors.CYAN)
         try:
+            typer.echo("🔁 Executing script, this may take a while...")
             proc = _run([str(script)], check=False)
             output = proc.stdout or ""
+            typer.secho("💾 Capturing script output...", fg=typer.colors.CYAN)
             outdir = Path(os.path.expanduser("~/tmp"))
             outdir.mkdir(parents=True, exist_ok=True)
             outpath = outdir / f"rust_clippy-{_nowstamp()}.txt"
             outpath.write_text(output, encoding="utf-8")
+            typer.secho(f"✅ Wrote output to: {outpath}", fg=typer.colors.GREEN)
+            typer.echo("🖥️ Opening output in editor...")
             _open_in_editor(outpath)
-        except Exception:
-            typer.secho("❌ Failed running rust_clippy script.", fg=typer.colors.RED)
+            typer.secho("✅ rust_clippy completed.", fg=typer.colors.GREEN)
+        except Exception as exc:
+            typer.secho(f"❌ Failed running rust_clippy script: {exc}", fg=typer.colors.RED)
             raise typer.Exit(1)
     else:
-        typer.secho("⚠️ ci/scripts/rust_clippy.sh not found or not executable.", fg=typer.colors.YELLOW)
+        typer.secho("⚠️ ci/scripts/rust_clippy.sh not found or not executable. Skipping.", fg=typer.colors.YELLOW)
 
 
 @app.command(help="Run cargo check with optional head/tail and project selection (ccheck)")
