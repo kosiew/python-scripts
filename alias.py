@@ -245,5 +245,97 @@ def gprhash(pr: str = typer.Argument(..., help="PR number, e.g. 43197")):
     for line in out.splitlines():
         typer.echo(line.split()[0])
 
+@app.command(name="encode_and_copy")
+def encode_and_copy_cmd(
+    text: str = typer.Argument(..., help="Text to base64-encode and copy to clipboard")
+):
+    """Base64-encode the given text and copy to the macOS clipboard (pbcopy)."""
+    import base64
+    import subprocess
+    import sys
+
+    encoded = base64.b64encode(text.encode()).decode()
+    if sys.platform == "darwin":
+        try:
+            p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
+            p.communicate(encoded.encode())
+            typer.echo("Encoded message copied to clipboard.")
+        except Exception:
+            typer.echo("Failed to copy to clipboard; printing encoded text:")
+            typer.echo(encoded)
+    else:
+        # Non-macOS fallback: print encoded value
+        typer.echo(encoded)
+
+
+@app.command(name="prettier_toggle")
+def prettier_toggle_cmd() -> None:
+    """Toggle ~/prettier-sql/.prettierrc by moving it to ~/tmp/.prettierrc and back.
+
+    Mirrors the existing shell helper: if the file exists, move it to ~/tmp/.prettierrc;
+    if the tmp exists, restore it back. Prints a short status message.
+    """
+    import shutil
+    from pathlib import Path
+
+    home = Path.home()
+    file_path = home / "prettier-sql" / ".prettierrc"
+    tmp_path = home / "tmp" / ".prettierrc"
+
+    # Ensure tmp dir exists when moving to it
+    try:
+        if file_path.exists():
+            tmp_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(file_path), str(tmp_path))
+            typer.echo("👋 Hiding .prettierrc → ~/tmp/")
+            return
+
+        if tmp_path.exists():
+            # restore to original location
+            (file_path.parent).mkdir(parents=True, exist_ok=True)
+            shutil.move(str(tmp_path), str(file_path))
+            typer.echo("🔄 Restoring .prettierrc → ~/")
+            return
+
+        typer.echo("⚠️ No .prettierrc found to hide or restore.")
+    except Exception as exc:
+        typer.echo(f"❌ Error toggling .prettierrc: {exc}")
+
+
+@app.command(name="chatmodes_copy")
+def chatmodes_copy_cmd(folder_name: str = typer.Argument(..., help="Target GitHub folder name (under ~/GitHub)") ) -> None:
+    """Copy chatmodes markdown files from chezmoi to the target repo's .github/chatmodes folder.
+
+    Mirrors the existing shell helper:
+      - source: ~/.local/share/chezmoi/GitHub/datafusion/dot_github/chatmodes
+      - target: ~/GitHub/<folder_name>/.github/chatmodes
+    Prints success or usage message on error.
+    """
+    if not folder_name:
+        typer.secho("❗ Usage: chatmodes_copy <folder_name>", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    home = Path.home()
+    target = home / "GitHub" / folder_name / ".github" / "chatmodes"
+    source = home / ".local" / "share" / "chezmoi" / "GitHub" / "datafusion" / "dot_github" / "chatmodes"
+
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+
+        md_files = list(source.glob("*.md")) if source.exists() else []
+        if not md_files:
+            typer.secho(f"⚠️ No .md files found in source: {source}", fg=typer.colors.YELLOW)
+            raise typer.Exit(1)
+
+        for f in md_files:
+            dest = target / f.name
+            # copy content reliably
+            dest.write_bytes(f.read_bytes())
+
+        typer.secho(f"✅ Copied chatmodes to {target}", fg=typer.colors.GREEN)
+    except Exception as exc:
+        typer.secho(f"❌ Failed to copy chatmodes: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
 if __name__ == "__main__":
     app()

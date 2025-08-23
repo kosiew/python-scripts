@@ -17,41 +17,29 @@ alias strip-tags="/Users/kosiew/GitHub/strip-tags/.venv/bin/strip-tags"
 alias ttok="/Users/kosiew/GitHub/ttok/.venv/bin/ttok"
 
 
+# Path to the central python alias CLI
+ALIAS_PY="$HOME/GitHub/python-scripts/alias.py"
+
+# Helper to run a subcommand of alias.py with arguments. Keeps wrappers DRY.
+run_alias_py() {
+  if [ -x "$ALIAS_PY" ] || [ -f "$ALIAS_PY" ]; then
+    python3 "$ALIAS_PY" "$@"
+  else
+    echo "❌ alias CLI not found at $ALIAS_PY" >&2
+    return 1
+  fi
+}
+
 encode_and_copy() {
-  python3 "$HOME/GitHub/python-scripts/alias.py" encode_and_copy "$1"
+  run_alias_py encode_and_copy "$1"
 }
 
 prettier_toggle() {
-  local file="$HOME/prettier-sql/.prettierrc"
-  local tmp="$HOME/tmp/.prettierrc"
-
-  mkdir -p "$HOME/tmp"
-
-  if [ -f "$file" ]; then
-    mv "$file" "$tmp"
-    echo "👋 Hiding .prettierrc → ~/tmp/"
-  elif [ -f "$tmp" ]; then
-    mv "$tmp" "$file"
-    echo "🔄 Restoring .prettierrc → ~/"
-  else
-    echo "⚠️ No .prettierrc found to hide or restore."
-  fi
+  run_alias_py prettier_toggle
 }
 
 chatmodes_copy() {
-  local folder_name="$1"
-
-  if [ -z "$folder_name" ]; then
-    echo "❗ Usage: copy_chatmodes <folder_name>"
-    return 1
-  fi
-
-  local target="/Users/kosiew/GitHub/$folder_name/.github/chatmodes"
-  local source="/Users/kosiew/.local/share/chezmoi/GitHub/datafusion/dot_github/chatmodes"
-
-  mkdir -p "$target" && \
-  cp "$source"/*.md "$target" && \
-  echo "✅ Copied chatmodes to $target"
+  run_alias_py chatmodes_copy "$1"
 }
  
 
