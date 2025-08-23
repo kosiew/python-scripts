@@ -2210,7 +2210,13 @@ def icask2(
         else:
             tpl_text = template
     else:
-        tpl_text = DEFAULT_TEMPLATE
+        # Prefer a local icask.md file next to this source file if present; else error
+        local_md = Path(__file__).with_name("icask.md")
+        if local_md.exists():
+            tpl_text = local_md.read_text(encoding="utf-8")
+        else:
+            typer.secho("❌ Template 'icask.md' not found next to alias.py and no --template provided. Please create icask.md or pass --template <path|text>.", fg=typer.colors.RED)
+            raise typer.Exit(2)
 
     # Substitute ${summary} (and other optional variables) and write file
     content = Template(tpl_text).safe_substitute(summary=summary_text, url=url, id=issue_id, timestamp=ts)
