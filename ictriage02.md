@@ -25,9 +25,7 @@ ${summary}
 
 ### 3. Investigation Plan
 
-* Define how to **reproduce the issue** (local setup, test cases, example inputs).
-* Identify debugging methods/tools to use (e.g., logging, unit tests, breakpoints).
-* Outline **key questions** to confirm root cause (e.g., config error, regression, environment-specific bug).
+* Create tests to investigate/confirm the issue. 
 
 ---
 
@@ -44,12 +42,7 @@ Assign one or more categories with justification, e.g.:
 
 ### 5. Resolution Plan
 
-Provide a **high-level action plan** to fix the issue:
-
-* **Short-term:** Immediate mitigation or workaround (if available).
-* **Long-term:** Structural fix or refactor (describe where changes go and why).
-* Add/update automated **tests** to confirm the issue is resolved and prevent regressions.
-* Update **documentation** (README, inline docs, changelog) if user-facing behavior changes.
+Provide a **detailed tasks** to resolve the issue
 
 ---
 
