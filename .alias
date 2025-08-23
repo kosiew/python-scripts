@@ -417,32 +417,7 @@ gtest() {
 
  
 gfilecommit() {
-  if [ -z "$1" ]; then
-    echo "❌ No file specified. Usage: gfilecommit <file>"
-    return 1
-  fi
-
-  file="$1"
-
-  if [ ! -f "$file" ]; then
-    echo "❌ File '$file' does not exist."
-    return 1
-  fi
-
-  echo "➕ Staging $file..."
-  git add "$file" || { echo "❌ Failed to stage $file."; return 1; }
-
-  echo "🧠 Generating commit message for $file..."
-  msg=$(git diff --staged "$file" | llm -s "generate an appropriate commit message")
-
-  if [ -z "$msg" ]; then
-    echo "⚠️ No commit message generated. Aborting commit."
-    return 1
-  fi
-
-  echo "💬 Commit message: $msg"
-  git commit -m "$msg"
-  echo "✅ Committed $file successfully!"
+  run_alias_py gfilecommit "$@"
 }
 
 # git commit unstaged files individually

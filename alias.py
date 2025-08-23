@@ -866,6 +866,53 @@ def gcopybranch() -> None:
 
     typer.echo(branch)
 
+
+@app.command(help="Stage a single file and commit with an AI-generated message (gfilecommit)")
+def gfilecommit(file: str = typer.Argument(..., help="File path to stage and commit")) -> None:
+    """Stage the given file, generate a commit message from the staged diff using `llm`, and commit.
+
+    Mirrors the shell `gfilecommit` helper. Exits non-zero on failure.
+    """
+    p = Path(file).expanduser()
+    if not p.exists() or not p.is_file():
+        typer.secho(f"❌ File '{file}' does not exist.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    typer.secho(f"➕ Staging {file}...", fg=typer.colors.CYAN)
+    try:
+        _run(["git", "add", str(p)])
+    except subprocess.CalledProcessError:
+        typer.secho(f"❌ Failed to stage {file}.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    typer.secho("🧠 Generating commit message for {file}...", fg=typer.colors.CYAN)
+    # Generate message from staged diff for the specific file
+    try:
+        proc = _run(["git", "diff", "--staged", str(p)], check=False)
+        staged_diff = proc.stdout or ""
+    except Exception:
+        staged_diff = ""
+
+    if not staged_diff.strip():
+        typer.secho("⚠️ No staged diff found for file; aborting.", fg=typer.colors.YELLOW)
+        raise typer.Exit(1)
+
+    msg = _llm(["-s", "Generate an appropriate commit message"], staged_diff)
+    msg = (msg or "").strip()
+
+    if not msg:
+        typer.secho("⚠️ No commit message generated. Aborting commit.", fg=typer.colors.YELLOW)
+        raise typer.Exit(1)
+
+    typer.secho(f"💬 Commit message: {msg}", fg=typer.colors.CYAN)
+    try:
+        _run(["git", "commit", "-m", msg])
+    except subprocess.CalledProcessError as exc:
+        typer.secho(f"❌ Commit failed: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    typer.secho(f"✅ Committed {file} successfully!", fg=typer.colors.GREEN)
+
 @app.command(name="chezcrypt")
 def chezcrypt_cmd(dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be encrypted without running chezmoi"),
                  targets: list[str] = typer.Argument(..., help="One or more target directories to encrypt")) -> None:
