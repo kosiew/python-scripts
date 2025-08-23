@@ -9,11 +9,6 @@ ${summary}
 
 1. Review the repository to locate all areas relevant to the issue.
 2. Provide a high-level, detailed action plan for investigating the issue.
-3. Determine whether the issue is
-	- Bug to be fixed.
-	- Feature to be implemented.
-	- Update documentation to improve user experience.
-	- Ask user for more information.
-	- Other (with justification).
+3. Determine suitable classifications for the issue, with justification
 4. Provide a high-level, detailed action plan for resolving the issue.
 ---
