@@ -884,39 +884,7 @@ ideep() {
 }
 
 icodex() {
-  if [ $# -ne 1 ]; then
-    echo "Usage: icodex <github-issue-url>"
-    return 1
-  fi
-  _process_issue "$1" \
-    "
-You are a **senior open-source contributor and software engineer**. Given a GitHub issue, follow the instructions based on its type:
----
-### **A. Feature or Improvement Request**
-1. **Analyze** the issue and produce **multiple distinct solution approaches**.
-2. For **each approach**, include:
-   * **Title & Summary** – A short, clear description of the strategy.
-   * **Agent Instructions** – Specific, executable steps for an AI coding agent (e.g., Codex) to implement the solution, including:
-     * Identifying the files, directories, or modules to review.
-     * How to evaluate extending existing modules vs. creating new ones.
-     * Step-by-step implementation actions.
-3. **Ranking** – Order the approaches by **feasibility** and **effectiveness**.
-4. **Formatting Requirements**:
-   * Use a **Heading** for each approach.
-   * Use **bullet points** or **code blocks** for agent instructions.
-   * End with a **final ranked list** of approaches.
-5. **Do not** include generic investigation steps or commentary—only concrete, actionable guidance.
----
-### **B. Bug Report**
-Produce **direct instructions** for an AI coding agent (e.g., Codex) to:
-1. **Confirm the bug** by:
-   * Creating a **script or test** in the relevant file to reproduce the issue.
-2. **Investigate** by:
-   * Identifying the root cause.
-3. **Fix** by:
-   * Modifying the relevant code sections to resolve the root cause.
-4. Focus solely on **specific, executable actions**—exclude vague steps or general debugging tips." \
-    "icodex"
+  run_alias_py icodex "$@"
 }
 
 

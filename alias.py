@@ -1990,6 +1990,51 @@ def ideep(
     issue_to_file(url=url, prompt=prompt, prefix="ideep", no_open=no_open, editor=editor)
 
 
+@app.command(help="Generate specific instructions for AI coding agents (Codex) to implement solutions")
+def icodex(
+    url: str = typer.Argument(..., help="GitHub issue/PR URL"),
+    no_open: bool = typer.Option(False, "--no-open", help="Do not open the file in $EDITOR"),
+    editor: Optional[str] = typer.Option(None, "--editor", "-e", help="Editor to open file"),
+):
+    """
+    Generate specific, executable instructions for AI coding agents (like Codex) to implement solutions.
+    
+    This command analyzes GitHub issues and provides detailed, actionable guidance for AI agents,
+    including multiple solution approaches for features and direct implementation steps for bugs.
+    """
+    prompt = (
+        "You are a **senior open-source contributor and software engineer**. Given a GitHub issue, follow the instructions based on its type:\n"
+        "---\n"
+        "### **A. Feature or Improvement Request**\n"
+        "1. **Analyze** the issue and produce **multiple distinct solution approaches**.\n"
+        "2. For **each approach**, include:\n"
+        "   * **Title & Summary** – A short, clear description of the strategy.\n"
+        "   * **Agent Instructions** – Specific, executable steps for an AI coding agent (e.g., Codex) to implement the solution, including:\n"
+        "     * Identifying the files, directories, or modules to review.\n"
+        "     * How to evaluate extending existing modules vs. creating new ones.\n"
+        "     * Step-by-step implementation actions.\n"
+        "3. **Ranking** – Order the approaches by **feasibility** and **effectiveness**.\n"
+        "4. **Formatting Requirements**:\n"
+        "   * Use a **Heading** for each approach.\n"
+        "   * Use **bullet points** or **code blocks** for agent instructions.\n"
+        "   * End with a **final ranked list** of approaches.\n"
+        "5. **Do not** include generic investigation steps or commentary—only concrete, actionable guidance.\n"
+        "---\n"
+        "### **B. Bug Report**\n"
+        "Produce **direct instructions** for an AI coding agent (e.g., Codex) to:\n"
+        "1. **Confirm the bug** by:\n"
+        "   * Creating a **script or test** in the relevant file to reproduce the issue.\n"
+        "2. **Investigate** by:\n"
+        "   * Identifying the root cause.\n"
+        "3. **Fix** by:\n"
+        "   * Modifying the relevant code sections to resolve the root cause.\n"
+        "4. Focus solely on **specific, executable actions**—exclude vague steps or general debugging tips."
+    )
+    
+    # Reuse the existing issue_to_file functionality
+    issue_to_file(url=url, prompt=prompt, prefix="icodex", no_open=no_open, editor=editor)
+
+
 if __name__ == "__main__":
     app()
 
