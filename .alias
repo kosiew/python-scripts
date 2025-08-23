@@ -166,22 +166,7 @@ off() {
       
 
 cdiff() {
-  local file1
-  local file2
-
-  file1=$(mktemp)
-  file2=$(mktemp)
-
-  echo "📋 Paste first clipboard content (press Ctrl+D when done):"
-  cat > "$file1"
-
-  echo "📋 Paste second clipboard content (press Ctrl+D when done):"
-  cat > "$file2"
-
-  echo "📝 Diff output:"
-  diff -u "$file1" "$file2" | vi -
-
-  rm -f "$file1" "$file2"
+  run_alias_py cdiff "$@"
 }
  
  
