@@ -206,10 +206,6 @@ def issue_to_file(
     if not _which("llm"):
         typer.secho("❌ 'llm' not found in PATH.", fg=typer.colors.RED)
         raise typer.Exit(1)
-
-
-    
-
     issue_id = _extract_id(url)
     outpath = _gen_filename(issue_id, f"issue:{url}", prefix)
     outpath.parent.mkdir(parents=True, exist_ok=True)
