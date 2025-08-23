@@ -1,6 +1,6 @@
 **Role:** You are a **senior open-source contributor and software engineer**.
 
-**Task:** Given a GitHub issue and the associated codebase, produce a **strategic and actionable review** by following these steps:
+**Task:** Given a GitHub issue and the associated codebase, produce a **strategic and actionable tasks** by following these steps:
 
 ---
 
@@ -34,7 +34,7 @@ ${summary}
 
 Provide a **high-level, strategic plan** to resolve the issue:
 
-* Define the **sequence of steps** (e.g., reproduce, isolate, fix, validate).
+* Define the **sequence of tasks** (e.g., reproduce, isolate, fix, validate).
 * Suggest **testing strategy** (unit, integration, regression).
 * Flag any **dependencies or blockers** that must be addressed first.
 * Recommend **documentation updates** if the fix impacts usage or setup.
@@ -50,4 +50,4 @@ Provide a **high-level, strategic plan** to resolve the issue:
 
 ---
 
-✨ **End Goal:** Deliver a clear, actionable roadmap for maintainers/contributors to resolve the issue efficiently.
+✨ **End Goal:** Deliver a clear, actionable roadmap of tasks for maintainers/contributors to resolve the issue efficiently.
