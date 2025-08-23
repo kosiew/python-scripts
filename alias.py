@@ -453,32 +453,50 @@ def gnb(branch: str = typer.Argument(..., help="New branch name")) -> None:
         typer.secho("Usage: gnb <new-branch-name>", fg=typer.colors.RED)
         raise typer.Exit(1)
 
+    typer.secho(f"🚀 Starting 'gnb' for new branch: {branch}", fg=typer.colors.CYAN)
+
     # If branch exists locally, delete it
-    if _run(["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"], check=False).returncode == 0:
-        typer.secho(f"🗑️ Deleting existing branch '{branch}'...", fg=typer.colors.YELLOW)
+    try:
+        exists = _run(["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"], check=False).returncode == 0
+    except Exception:
+        exists = False
+
+    if exists:
+        typer.secho(f"🗑️ Detected existing local branch '{branch}' — deleting...", fg=typer.colors.YELLOW)
         try:
             _run(["git", "branch", "-D", branch])
+            typer.secho(f"✅ Deleted local branch '{branch}'", fg=typer.colors.GREEN)
         except Exception:
-            typer.secho(f"❌ Failed to delete branch '{branch}'.", fg=typer.colors.RED)
+            typer.secho(f"❌ Failed to delete branch '{branch}'. Aborting.", fg=typer.colors.RED)
             raise typer.Exit(1)
 
     # Create and switch to new branch
+    typer.secho(f"🌱 Creating and switching to branch '{branch}'...", fg=typer.colors.CYAN)
     try:
         _run(["git", "checkout", "-b", branch])
+        typer.secho(f"✅ Now on branch '{branch}'", fg=typer.colors.GREEN)
     except Exception:
-        typer.secho(f"❌ Failed to create branch '{branch}'.", fg=typer.colors.RED)
+        typer.secho(f"❌ Failed to create branch '{branch}'. Aborting.", fg=typer.colors.RED)
         raise typer.Exit(1)
 
     # Checkout AGENTS.md from dev, add and commit
+    typer.secho("📥 Attempting to checkout AGENTS.md from 'dev' (if present)...", fg=typer.colors.CYAN)
     try:
         _run(["git", "checkout", "dev", "--", "AGENTS.md"]) 
-        _run(["git", "add", "AGENTS.md"])
-        _run(["git", "commit", "-m", "UNPICK added AGENTS.md"])
+        typer.secho("📄 AGENTS.md checked out from 'dev'", fg=typer.colors.GREEN)
+        try:
+            _run(["git", "add", "AGENTS.md"])
+            _run(["git", "commit", "-m", "UNPICK added AGENTS.md"])
+            typer.secho("✅ AGENTS.md added and committed.", fg=typer.colors.GREEN)
+        except subprocess.CalledProcessError:
+            typer.secho("⚠️ No changes to commit for AGENTS.md (or commit failed).", fg=typer.colors.YELLOW)
     except subprocess.CalledProcessError:
-        typer.secho("❌ Failed to checkout or commit AGENTS.md; continue if not applicable.", fg=typer.colors.YELLOW)
+        typer.secho("⚠️ AGENTS.md not present in 'dev' or checkout failed; skipping.", fg=typer.colors.YELLOW)
     except Exception:
         # non-fatal: some repos may not have AGENTS.md
-        pass
+        typer.secho("⚠️ Unexpected error while handling AGENTS.md; continuing.", fg=typer.colors.YELLOW)
+
+    typer.secho(f"🎉 Finished 'gnb' — branch '{branch}' is ready.", fg=typer.colors.GREEN)
 
 
 @app.command(help="Run repository-specific rust clippy script and open output (rust_clippy)")
