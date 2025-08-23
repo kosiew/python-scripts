@@ -905,69 +905,7 @@ iprfb() {
 # generate codex Ask prompt 
 # on how to address issue
 icask() {
-  if [ $# -lt 1 ]; then
-    echo "Usage: icask <github-issue-url> [comment]"
-    return 1
-  fi
-
-  local url="$1"
-  shift
-  local comment="$*"
-
-  # Rephrase the optional comment if possible
-  local rephrased=""
-  if [ -n "$comment" ]; then
-    if command -v llm >/dev/null 2>&1; then
-      rephrased="$(printf '%s' "$comment" | llm -s "Rephrase this reviewer note in 1–2 concise, professional sentences. Keep key constraints; avoid first person; do not quote verbatim.")"
-      # fallback if llm returns empty
-      [ -z "$rephrased" ] && rephrased="$comment"
-    else
-      rephrased="$comment"
-    fi
-  fi
-
-  # Build Step 1 line
-  local summary_step
-  if [ -n "$rephrased" ]; then
-    summary_step="1. **Summarize** the issue clearly and concisely, incorporating this reviewer note (already rephrased): ${rephrased}"
-  else
-    summary_step="1. **Summarize** the issue clearly and concisely."
-  fi
-
-  # Compose the full prompt
-  local prompt
-  prompt=$(cat <<EOF
-**Role:** You are a **senior open-source contributor and software engineer**.
-
-**Task:** Given a GitHub issue and the associated codebase, produce a strategic and actionable review by following these steps:
-
-${summary_step}
-2. **Complete the following template**, which will be used as instructions for a coding agent (e.g., Codex) to act upon.
-
----
-
-**Instruction Template**
-
-## <Concise Description of the Issue>
-
-**Steps:**
-
-1. Review the repository to locate all areas relevant to the issue.
-2. Determine whether the solution requires modifying existing code or extending the codebase.
-3. Provide a high-level, detailed action plan for resolving the issue.
-
----
-
-**Guidelines:**
-
-* Do **not** generate code.
-* Keep the commentary concise and strategic.
-* Focus on problem analysis and solution direction rather than implementation details.
-* Ensure the output is actionable for a coding agent without unnecessary narrative.
-EOF
-)
-
-  _process_issue "$url" "$prompt" "icask"
+  run_alias_py icask "$@"
 }
 
 # triage issue

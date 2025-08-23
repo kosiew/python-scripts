@@ -2124,6 +2124,71 @@ Conclusion:
             typer.echo(prompt)
 
 
+@app.command(help="Generate strategic instructions for coding agents with optional reviewer notes")
+def icask(
+    url: str = typer.Argument(..., help="GitHub issue/PR URL"),
+    comment: str = typer.Argument("", help="Optional reviewer comment to incorporate"),
+    no_open: bool = typer.Option(False, "--no-open", help="Do not open the file in $EDITOR"),
+    editor: Optional[str] = typer.Option(None, "--editor", "-e", help="Editor to open file"),
+):
+    """
+    Generate strategic instructions for coding agents (like Codex) with optional reviewer notes.
+    
+    This command analyzes GitHub issues and produces actionable templates for coding agents,
+    optionally incorporating and rephrasing reviewer comments for better clarity.
+    """
+    # Rephrase the optional comment if provided and llm is available
+    rephrased = ""
+    if comment.strip():
+        if _which("llm"):
+            try:
+                rephrase_prompt = "Rephrase this reviewer note in 1–2 concise, professional sentences. Keep key constraints; avoid first person; do not quote verbatim."
+                proc = _run(["llm", "-s", rephrase_prompt], input=comment)
+                rephrased = proc.stdout.strip() if proc.stdout.strip() else comment
+            except Exception:
+                rephrased = comment
+        else:
+            rephrased = comment
+    
+    # Build the summary step based on whether we have a rephrased comment
+    if rephrased:
+        summary_step = f"1. **Summarize** the issue clearly and concisely, incorporating this reviewer note (already rephrased): {rephrased}"
+    else:
+        summary_step = "1. **Summarize** the issue clearly and concisely."
+    
+    # Compose the full prompt
+    prompt = f"""**Role:** You are a **senior open-source contributor and software engineer**.
+
+**Task:** Given a GitHub issue and the associated codebase, produce a strategic and actionable review by following these steps:
+
+{summary_step}
+2. **Complete the following template**, which will be used as instructions for a coding agent (e.g., Codex) to act upon.
+
+---
+
+**Instruction Template**
+
+## <Concise Description of the Issue>
+
+**Steps:**
+
+1. Review the repository to locate all areas relevant to the issue.
+2. Determine whether the solution requires modifying existing code or extending the codebase.
+3. Provide a high-level, detailed action plan for resolving the issue.
+
+---
+
+**Guidelines:**
+
+* Do **not** generate code.
+* Keep the commentary concise and strategic.
+* Focus on problem analysis and solution direction rather than implementation details.
+* Ensure the output is actionable for a coding agent without unnecessary narrative."""
+    
+    # Use the existing issue_to_file functionality
+    issue_to_file(url=url, prompt=prompt, prefix="icask", no_open=no_open, editor=editor)
+
+
 if __name__ == "__main__":
     app()
 
