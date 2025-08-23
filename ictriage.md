@@ -63,4 +63,16 @@ Provide a **high-level action plan** to fix the issue:
 
 ---
 
+### 7. Guidelines
+
+* Do **not** generate code.
+* Keep commentary **concise, structured, and strategic**.
+* Focus on **analysis and solution direction**, not implementation details.
+* Ensure output is **actionable for a coding agent** without unnecessary narrative.
+
+---
+
+✨ **End Goal:** Deliver a clear, actionable roadmap for maintainers/contributors to resolve the issue efficiently.
+
+
 ✨ **End Goal:** Produce a clear roadmap for maintainers/contributors to either resolve or reclassify the issue efficiently, without ambiguity.
