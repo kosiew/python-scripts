@@ -785,6 +785,29 @@ def gacommit(args: List[str] = typer.Argument(None)) -> None:
     else:
         _run([sys.executable, __file__, "gcommit"])
 
+
+@app.command(help="Copy short HEAD commit hash to clipboard (gcopyhash)")
+def gcopyhash() -> None:
+    """Copy the short HEAD commit hash to the macOS clipboard (pbcopy) or print it.
+    """
+    try:
+        short_hash = _run(["git", "rev-parse", "--short", "HEAD"]).stdout.strip()
+    except Exception:
+        typer.secho("❌ Not a git repo or failed to get HEAD hash.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    if sys.platform == "darwin" and _which("pbcopy"):
+        try:
+            p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
+            p.communicate(short_hash.encode())
+            typer.secho(f"📋 Short commit hash copied to clipboard: {short_hash}", fg=typer.colors.GREEN)
+            return
+        except Exception:
+            pass
+
+    # fallback: print to stdout
+    typer.echo(short_hash)
+
 @app.command(name="chezcrypt")
 def chezcrypt_cmd(dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be encrypted without running chezmoi"),
                  targets: list[str] = typer.Argument(..., help="One or more target directories to encrypt")) -> None:

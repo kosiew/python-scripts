@@ -400,10 +400,7 @@ gcommit() {
 
 # copy HEAD commit hash
 gcopyhash() {
-  local short_hash
-  short_hash=$(git rev-parse --short HEAD)
-  echo -n "$short_hash" | pbcopy
-  echo "📋 Short commit hash copied to clipboard: $short_hash"
+  run_alias_py gcopyhash "$@"
 }
  
 gcopybranch() {
