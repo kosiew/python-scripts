@@ -13,7 +13,7 @@ from typing import Optional, List
 import typer
 
 ICTRIAGE_MD = "ictriage03.md"
-ICASK_MD = "icask03.md"
+ICASK_MD = "icask02.md"
 
 app = typer.Typer(
     name="alias-cli",

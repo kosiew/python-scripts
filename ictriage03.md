@@ -3,25 +3,68 @@
 **Objective:** Perform **issue triage** for the given GitHub issue and repository.
 
 **Context:**
-**Issue Summary:**
-${summary}
+**Issue Description:**
+\${summary}
 
-**Instructions:**
+---
 
-1. **Analyze the repository:** Identify all files, modules, and components relevant to the issue.
-2. **Classify the issue:** Determine appropriate labels or categories (e.g., *bug, enhancement, documentation, performance, testing*).
-3. **Impact assessment:** Briefly explain the scope and potential effects of the issue on the project (e.g., core functionality vs. edge case).
-4. **Resolution strategy:** Provide a clear, high-level action plan for addressing the issue.
-5. **Deliverable:** Break down the resolution strategy into a structured set of actionable tasks (step-by-step), suitable for contributors to follow.
+### 1. Issue Understanding
 
-**Output format:**
+* Summarize the issue in your own words.
+* Identify the reported vs. expected behavior.
+* Note whether reproduction steps are provided or need to be inferred.
 
-* **Issue Classification:** \[labels/categories]
-* **Relevant Code Areas:** \[list of files/modules]
-* **Impact:** \[1–2 sentences]
-* **Action Plan:** \[detailed steps]
-* **Task List:**
+---
 
-  * Task 1
-  * Task 2
-  * Task 3
+### 2. Codebase Review
+
+* Identify all files, modules, or components potentially related to the issue.
+* Trace internal and external dependencies that may affect the behavior.
+* Highlight any recent commits or pull requests that could be linked to the issue.
+
+---
+
+### 3. Classification
+
+Assign categories with justification:
+
+* **Type:** Bug 🐛 / Feature Request ✨ / Enhancement ⚡ / Documentation 📖
+* **Severity:** Critical 🚨 / Major 🔴 / Minor 🟡 / Trivial ⚪
+* **Scope:** Single-module / Multi-module / System-wide
+* **Priority:** High / Medium / Low (based on impact and reproducibility)
+
+---
+
+### 4. Resolution Strategy
+
+* Outline a clear, high-level action plan for resolving the issue.
+* Emphasize problem analysis and solution direction over implementation details.
+
+---
+
+### 5. Task List
+
+Provide a structured set of actionable tasks:
+
+---
+
+### 6. Next Steps
+
+Decide the most suitable path forward:
+
+* Immediate fix in a patch PR
+* Request clarification from the reporter
+* Defer to a future release (if low priority)
+
+---
+
+## Guidelines
+
+* Do **not** generate code.
+* Keep commentary **concise, structured, and strategic**.
+* Focus on **analysis and solution direction**, not low-level implementation.
+* Ensure output is **actionable for contributors** without unnecessary narrative.
+
+---
+
+✨ **End Goal:** Deliver a clear, unambiguous roadmap of **tasks and decisions** for maintainers/contributors to efficiently resolve or reclassify the issue.
