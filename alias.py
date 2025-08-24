@@ -1144,8 +1144,11 @@ def gcommit_cmd(message: Optional[str] = typer.Argument(None, help="Commit messa
     Prompts user to confirm the commit. Signs off if repo config `commit.gcommitSigned` or
     environment `GCOMMIT_SIGNED` is set.
     """
-    # If message not provided, generate one
-    msg = message
+    # Handle Typer ArgumentInfo objects that can be passed when called programmatically
+    if hasattr(message, '__class__') and 'ArgumentInfo' in str(type(message)):
+        msg = None  # Treat ArgumentInfo as no message provided
+    else:
+        msg = message
     if not msg:
         typer.echo("🧠 Generating commit message from staged changes...")
         try:
@@ -1210,10 +1213,9 @@ def gacommit(args: List[str] = typer.Argument(None)) -> None:
     typer.echo("🚀 Running gcommit...")
     # Forward args to gcommit command handler: construct a message arg if provided
     if args:
-        # join args as a single message
-        _run([sys.executable, __file__, "gcommit", " ".join(args)])
+        gcommit_cmd(" ".join(args))
     else:
-        _run([sys.executable, __file__, "gcommit"])
+        gcommit_cmd()
 
 
 @app.command(help="Recreate 'test' branch from a commit point (gtest)")
