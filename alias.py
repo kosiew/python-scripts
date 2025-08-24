@@ -1371,24 +1371,44 @@ def gappdiff(dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Check 
     for ln in patch_text.splitlines()[:20]:
         typer.echo(ln)
 
+    # Use check=False and inspect return codes and stderr to avoid treating
+    # 'non-zero but partially applied' states as both success and failure.
     if dry_run:
         typer.secho("🧪 Dry-run: checking with --3way…", fg=typer.colors.CYAN)
-        try:
-            _run(["git", "apply", "--3way", "--index", "--check", str(patch_path)], check=False)
+        proc = _run(["git", "apply", "--3way", "--index", "--check", str(patch_path)], check=False)
+        if proc.returncode == 0:
             typer.secho("✅ Patch would apply cleanly.", fg=typer.colors.GREEN)
             raise typer.Exit(0)
-        except Exception:
+        else:
+            # Provide git's stderr for debugging when available
+            stderr = (proc.stderr or "").strip()
             typer.secho("❌ Patch check failed.", fg=typer.colors.RED)
+            if stderr:
+                typer.echo(stderr)
             typer.secho(f"   Try: (cd \"{root}\" && git apply --3way --reject \"{patch_path}\")", fg=typer.colors.YELLOW)
             raise typer.Exit(1)
 
     typer.secho("📥 Applying with --3way…", fg=typer.colors.CYAN)
-    try:
-        _run(["git", "apply", "--3way", "--index", str(patch_path)])
+    proc = _run(["git", "apply", "--3way", "--index", str(patch_path)], check=False)
+    # git apply may exit non-zero but still stage changes when using --3way;
+    # check for staged changes as the real indicator of success.
+    if proc.returncode == 0:
         typer.secho("🎉 Applied. Changes are staged.", fg=typer.colors.GREEN)
         raise typer.Exit(0)
-    except Exception:
+    else:
+        # However, sometimes git apply exits non-zero but has applied hunks and
+        # written .git/rebase-apply or similar; inspect staged state to be sure.
+        # Check if index has changes (i.e., git diff --cached is non-empty)
+        cached = _run(["git", "diff", "--cached", "--name-only"], check=False)
+        if (cached.stdout or "").strip():
+            typer.secho("⚠️ git apply exited non-zero but changes are staged.", fg=typer.colors.YELLOW)
+            typer.secho("🎉 Applied. Changes are staged.", fg=typer.colors.GREEN)
+            raise typer.Exit(0)
+        # Nothing staged — report failure and show stderr
+        stderr = (proc.stderr or "").strip()
         typer.secho("❌ Apply failed.", fg=typer.colors.RED)
+        if stderr:
+            typer.echo(stderr)
         typer.secho(f"   Try: (cd \"{root}\" && git apply --3way --reject \"{patch_path}\")", fg=typer.colors.YELLOW)
         raise typer.Exit(1)
 
