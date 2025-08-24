@@ -54,6 +54,30 @@ def _llm(flags: list[str], prompt: str, input_text: Optional[str] = None) -> str
     except Exception:
         return ""
 
+
+def _unwrap_fenced(text: str) -> str:
+    """Remove surrounding fenced code block markers (``` or ~~~) from LLM output.
+
+    If the text begins and ends with matching fence markers, strip them and any
+    leading/trailing blank lines. Otherwise return text unchanged.
+    """
+    if not text:
+        return text
+    lines = text.splitlines()
+    if len(lines) >= 3:
+        first = lines[0].strip()
+        last = lines[-1].strip()
+        if (first.startswith("```") and last.startswith("```")) or (first.startswith("~~~") and last.startswith("~~~")):
+            # remove first and last lines, then trim surrounding blank lines
+            inner = lines[1:-1]
+            # strip leading/trailing blank lines
+            while inner and not inner[0].strip():
+                inner.pop(0)
+            while inner and not inner[-1].strip():
+                inner.pop()
+            return "\n".join(inner)
+    return text
+
 def _open_in_editor(path: Path, editor: Optional[str] = None, syntax_on: bool = False) -> None:
     """Open `path` in the user's editor.
 
@@ -1158,7 +1182,7 @@ def gcommit_cmd(message: Optional[str] = typer.Argument(None, help="Commit messa
 
         if staged.strip():
             generated = _llm(["-s", "Generate a clear, conventional commit message for these staged changes"], staged)
-            msg = generated.strip()
+            msg = _unwrap_fenced(generated).strip()
 
         if not msg:
             fallback = f"chore: commit at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
@@ -1496,7 +1520,7 @@ def gfilecommit(file: str = typer.Argument(..., help="File path to stage and com
         raise typer.Exit(1)
 
     msg = _llm(["-s", "Generate an appropriate commit message"], staged_diff)
-    msg = (msg or "").strip()
+    msg = _unwrap_fenced(msg or "").strip()
 
     if not msg:
         typer.secho("⚠️ No commit message generated. Aborting commit.", fg=typer.colors.YELLOW)
