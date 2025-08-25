@@ -78,6 +78,46 @@ def _unwrap_fenced(text: str) -> str:
             return "\n".join(inner)
     return text
 
+
+def find_and_remove_old_files(rel_dir: str, *, days: int = 30, pattern: Optional[str] = None) -> int:
+    """Find files under Path.home()/rel_dir matching `pattern` older than `days` and remove them.
+
+    Args:
+        rel_dir: directory path relative to the user's home directory (e.g., 'tmp')
+        days: delete files older than this many days
+        pattern: optional regex to match filenames (applied to Path.name)
+
+    Returns:
+        Number of files removed (int)
+    """
+    import time
+    import re
+
+    base = Path.home() / rel_dir
+    if not base.exists():
+        return 0
+
+    cutoff_time = time.time() - (days * 24 * 60 * 60)
+    filename_re = re.compile(pattern) if pattern else None
+
+    removed = 0
+    for p in base.rglob("*"):
+        if p.is_file():
+            try:
+                if p.stat().st_mtime < cutoff_time:
+                    if filename_re is not None and not filename_re.search(p.name):
+                        continue
+                    try:
+                        p.unlink()
+                    except Exception:
+                        # best-effort delete; skip on failure
+                        continue
+                    removed += 1
+            except (OSError, PermissionError):
+                continue
+
+    return removed
+
 def _open_in_editor(path: Path, editor: Optional[str] = None, syntax_on: bool = False) -> None:
     """Open `path` in the user's editor.
 
@@ -2444,26 +2484,8 @@ def cleantmp_cmd(
     # Calculate cutoff time (days ago from now)
     cutoff_time = time.time() - (days * 24 * 60 * 60)
     
-    # Prepare optional filename regex
-    import re
-    filename_re = re.compile(pattern) if pattern else None
-
-    # Delete old files
-    files_deleted = 0
-    for file_path in tmp_dir.rglob("*"):
-        if file_path.is_file():
-            try:
-                if file_path.stat().st_mtime < cutoff_time:
-                    # If a pattern was provided, only delete when filename matches
-                    if filename_re is not None and not filename_re.search(file_path.name):
-                        continue
-
-                    typer.echo(f"Deleting: {file_path}")
-                    file_path.unlink()
-                    files_deleted += 1
-            except (OSError, PermissionError) as e:
-                typer.secho(f"⚠️  Could not delete {file_path}: {e}", fg=typer.colors.YELLOW)
-    
+    # Use reusable helper to remove files
+    files_deleted = find_and_remove_old_files("tmp", days=days, pattern=pattern)
     typer.secho(f"📄 Deleted {files_deleted} old files", fg=typer.colors.GREEN)
     
     # Delete empty directories (excluding vim_swap and pycache)
