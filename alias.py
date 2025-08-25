@@ -2525,29 +2525,9 @@ def weekly_tmp_cleaner_cmd() -> None:
     # Create cache directory if it doesn't exist
     cache_dir.mkdir(exist_ok=True)
     
-    # Cron expression for Monday at 7:00 AM (minute hour day month weekday)
-    cron_expr = "0 7 * * 1"  # Monday=1 in this cron format
-    
-    now_dt = datetime.now()
-    now_epoch = int(time.time())
-    
-    # Get the most recent scheduled epoch for this cron expression
-    scheduled_epoch = _get_last_scheduled_epoch(cron_expr, now_dt=now_dt, now_epoch=now_epoch)
-    
-    if scheduled_epoch is not None:
-        # Check if we need to run based on the last run timestamp
-        try:
-            if stamp_file.exists():
-                last_run = int(stamp_file.read_text().strip())
-            else:
-                last_run = 0  # First run
-        except (ValueError, OSError):
-            last_run = 0  # Treat read errors as first run
-        
-        # Run if current time >= scheduled time and we haven't run since the scheduled time
-        if now_epoch >= scheduled_epoch and last_run < scheduled_epoch:
-            with _stamp_on_success(stamp_file, scheduled_epoch):
-                _run_cleantmp_and_notify()
+    # Delegate scheduling to the reusable helper which will create its own stamp
+    # file derived from the cron expression.
+    schedule_and_run("0 7 * * 1", _run_cleantmp_and_notify, cache_dir=cache_dir)
 
 
 def _run_cleantmp_and_notify() -> None:
@@ -2678,6 +2658,53 @@ def _is_cron_schedule_due(stamp_file: Path, cron_expr: str, *, now_dt: 'datetime
             return True  # Treat read errors as first run
 
     return False
+
+
+def schedule_and_run(cron_expr: str, task: callable, *, cache_dir: Path | None = None) -> None:
+    """Schedule wrapper that uses `cron_expr` to decide whether to run `task`.
+
+    - Creates a stamp file under cache_dir derived from the cron expression.
+    - Computes the most recent scheduled epoch for `cron_expr`.
+    - If the task is due (not recorded as run at that scheduled epoch) it runs
+      `task()` inside the `_stamp_on_success` context manager which writes the
+      stamp only if the task completes without raising.
+
+    Args:
+        cron_expr: a 5-field cron string (minute hour day month weekday)
+        task: a zero-argument callable to execute when scheduled
+        cache_dir: optional Path to hold the stamp file; defaults to ~/.cache
+    """
+    import time
+    from datetime import datetime
+
+    if cache_dir is None:
+        cache_dir = Path.home() / ".cache"
+    cache_dir.mkdir(exist_ok=True)
+
+    # Use a deterministic stamp filename derived from the cron expression
+    safe_name = "cron_" + "_".join(cron_expr.split())
+    stamp_file = cache_dir / f".{safe_name}_last_run"
+
+    now_dt = datetime.now()
+    now_epoch = int(time.time())
+
+    scheduled_epoch = _get_last_scheduled_epoch(cron_expr, now_dt=now_dt, now_epoch=now_epoch)
+    if scheduled_epoch is None:
+        return
+
+    # Read last run (best-effort)
+    try:
+        if stamp_file.exists():
+            last_run = int(stamp_file.read_text().strip())
+        else:
+            last_run = 0
+    except (ValueError, OSError):
+        last_run = 0
+
+    # If due, run inside stamp-on-success so stamp only updates on success
+    if now_epoch >= scheduled_epoch and last_run < scheduled_epoch:
+        with _stamp_on_success(stamp_file, scheduled_epoch):
+            task()
 
 
 def _get_last_scheduled_epoch(cron_expr: str, *, now_dt: 'datetime' | None = None, now_epoch: int | None = None) -> int | None:
