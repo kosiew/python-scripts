@@ -23,13 +23,7 @@ ${summary}
 
 ---
 
-### 3. Investigation Plan
-
-* Create tests to investigate/confirm the issue. 
-
----
-
-### 4. Classification
+### 3. Classification
 
 Assign one or more categories with justification, e.g.:
 
@@ -40,13 +34,13 @@ Assign one or more categories with justification, e.g.:
 
 ---
 
-### 5. Resolution Plan
+### 4. Resolution Plan
 
 Provide a **detailed tasks** to resolve the issue
 
 ---
 
-### 6. Next Steps
+### 5. Next Steps
 
 * Decide whether to:
 
