@@ -2521,22 +2521,10 @@ def clean_old_zcompdump_cmd() -> None:
     Mirrors the shell helper: finds files matching ~/.zcompdump* and removes any that are not
     the current ~/.zcompdump file, then prints a summary.
     """
-    home = Path.home()
-    current_dump = home / ".zcompdump"
-    files = list(home.glob('.zcompdump*'))
-    count = 0
-
-    for f in files:
-        try:
-            if f != current_dump:
-                f.unlink(missing_ok=True)
-                count += 1
-        except Exception:
-            # ignore individual unlink errors
-            continue
-
-    if count > 0:
-        typer.secho(f"🗑️  Cleaned up {count} old zcompdump file(s)!", fg=typer.colors.GREEN)
+    # Use the reusable helper to remove older .zcompdump* files in the home dir
+    removed = find_and_remove_old_files(".", days=7, pattern=r"^\.zcompdump")
+    if removed > 0:
+        typer.secho(f"🗑️  Cleaned up {removed} old zcompdump file(s)!", fg=typer.colors.GREEN)
 
 
 @app.command(name="weekly_tmp_cleaner")
