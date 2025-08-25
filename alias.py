@@ -2664,8 +2664,26 @@ def schedule_and_run(cron_expr: str, task: Callable[[], None], *, cache_dir: Opt
     cache_dir.mkdir(exist_ok=True)
 
     # Use a deterministic stamp filename derived from the cron expression
+    # and the task identity to avoid collisions when multiple different
+    # tasks share the same cron expression.
+    def _task_safe_name(t: Callable[[], None]) -> str:
+        """Produce a short, filesystem-safe name for the task.
+
+        Prefer the callable's __name__ when available, otherwise fall back to
+        the repr. Strip non-alphanumeric characters and replace them with
+        hyphens to keep filenames safe.
+        """
+        name = getattr(t, "__name__", None) or repr(t)
+        # keep letters, numbers, dot, underscore and replace others with '-'
+        cleaned = re.sub(r"[^A-Za-z0-9._-]", "-", name)
+        # collapse repeated hyphens
+        cleaned = re.sub(r"-+", "-", cleaned).strip("-")
+        # limit length to avoid overly long filenames
+        return cleaned[:64] or "task"
+
     safe_name = "cron_" + "_".join(cron_expr.split())
-    stamp_file = cache_dir / f".{safe_name}_last_run"
+    task_name = _task_safe_name(task)
+    stamp_file = cache_dir / f".{safe_name}_{task_name}_last_run"
 
     now_dt = datetime.now()
     now_epoch = int(time.time())
