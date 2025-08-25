@@ -159,10 +159,10 @@ cdiff() {
   run_alias_py cdiff "$@"
 }
  
- 
-clean_old_zcompdump() {
-  run_alias_py clean_old_zcompdump "$@"
+weekly_zcompdump_cleaner() {
+  run_alias_py weekly_zcompdump_cleaner 
 }
+
 
 # ====================
 # 🧠 General Tools
@@ -921,3 +921,4 @@ daily_gdiff_cleaner() {
 
 add-zsh-hook precmd weekly_tmp_cleaner
 add-zsh-hook precmd daily_gdiff_cleaner
+add-zsh-hook precmd weekly_zcompdump_cleaner

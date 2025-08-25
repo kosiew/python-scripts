@@ -79,13 +79,14 @@ def _unwrap_fenced(text: str) -> str:
     return text
 
 
-def find_and_remove_old_files(rel_dir: str, *, days: int = 30, pattern: Optional[str] = None) -> int:
+def find_and_remove_old_files(rel_dir: str, *, days: int = 30, pattern: Optional[str] = None, recurse: bool = True) -> int:
     """Find files under Path.home()/rel_dir matching `pattern` older than `days` and remove them.
 
     Args:
         rel_dir: directory path relative to the user's home directory (e.g., 'tmp')
         days: delete files older than this many days
-        pattern: optional regex to match filenames (applied to Path.name)
+    pattern: optional regex to match filenames (applied to Path.name)
+    recurse: whether to recurse into subdirectories (default True)
 
     Returns:
         Number of files removed (int)
@@ -101,7 +102,8 @@ def find_and_remove_old_files(rel_dir: str, *, days: int = 30, pattern: Optional
     filename_re = re.compile(pattern) if pattern else None
 
     removed = 0
-    for p in base.rglob("*"):
+    iterator = base.rglob("*") if recurse else base.iterdir()
+    for p in iterator:
         if p.is_file():
             try:
                 if p.stat().st_mtime < cutoff_time:
@@ -2522,7 +2524,7 @@ def clean_old_zcompdump_cmd() -> None:
     the current ~/.zcompdump file, then prints a summary.
     """
     # Use the reusable helper to remove older .zcompdump* files in the home dir
-    removed = find_and_remove_old_files(".", days=7, pattern=r"^\.zcompdump")
+    removed = find_and_remove_old_files(".", days=7, pattern=r"^\.zcompdump", recurse=False)
     if removed > 0:
         typer.secho(f"🗑️  Cleaned up {removed} old zcompdump file(s)!", fg=typer.colors.GREEN)
 
@@ -2534,18 +2536,9 @@ def weekly_tmp_cleaner_cmd() -> None:
     This function uses cron-like scheduling to run cleanup every Monday at 7:00 AM.
     It maintains a timestamp file to track the last run and only executes when due.
     """
-    from datetime import datetime
-    import time
-    
-    # Set up paths
-    cache_dir = Path.home() / ".cache"
-    
-    # Create cache directory if it doesn't exist
-    cache_dir.mkdir(exist_ok=True)
-    
     # Delegate scheduling to the reusable helper which will create its own stamp
     # file derived from the cron expression.
-    schedule_and_run("0 7 * * 1", _run_cleantmp_and_notify, cache_dir=cache_dir)
+    schedule_and_run("0 7 * * 1", _run_cleantmp_and_notify)
 
 
 @app.command(name="daily_gdiff_cleaner")
@@ -2555,12 +2548,22 @@ def daily_gdiff_cleaner_cmd() -> None:
     Uses `schedule_and_run` to run `_run_gdiff_gdn_cleanup_and_notify` every day
     at 07:00 and maintain its own stamp file.
     """
-    import time
+
+    # Cron expression for every day at 07:00
+    schedule_and_run("0 7 * * *", _run_gdiff_gdn_cleanup_and_notify)
+
+
+@app.command(name="weekly_zcompdump_cleaner")
+def weekly_zcompdump_cleaner_cmd() -> None:
+    """Schedule and run weekly cleanup for old .zcompdump files.
+
+    Uses `schedule_and_run` to run `clean_old_zcompdump_cmd` every Monday at 07:00.
+    """
     cache_dir = Path.home() / ".cache"
     cache_dir.mkdir(exist_ok=True)
 
-    # Cron expression for every day at 07:00
-    schedule_and_run("0 7 * * *", _run_gdiff_gdn_cleanup_and_notify, cache_dir=cache_dir)
+    # Cron expression for Monday at 07:00
+    schedule_and_run("0 7 * * 1", clean_old_zcompdump_cmd, cache_dir=cache_dir)
 
 
 def _run_cleantmp_and_notify() -> None:
