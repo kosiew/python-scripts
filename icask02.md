@@ -32,7 +32,7 @@ ${summary}
 
 ## 4. Action Plan
 
-Provide a **high-level, strategic plan** to resolve the issue:
+Provide a **high-level, strategic tasks** to resolve the issue:
 
 * Define the **sequence of tasks** (e.g., reproduce, isolate, fix, validate).
 * Suggest **testing strategy** (unit, integration, regression).
