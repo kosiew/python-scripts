@@ -915,5 +915,9 @@ weekly_tmp_cleaner() {
   run_alias_py weekly_tmp_cleaner
 }
 
+daily_gdiff_cleaner() {
+  run_alias_py daily_gdiff_cleaner
+}
 
 add-zsh-hook precmd weekly_tmp_cleaner
+add-zsh-hook precmd daily_gdiff_cleaner

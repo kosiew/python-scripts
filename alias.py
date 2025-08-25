@@ -2538,6 +2538,21 @@ def weekly_tmp_cleaner_cmd() -> None:
     schedule_and_run("0 7 * * 1", _run_cleantmp_and_notify, cache_dir=cache_dir)
 
 
+@app.command(name="daily_gdiff_cleaner")
+def daily_gdiff_cleaner_cmd() -> None:
+    """Schedule and run daily cleanup for files starting with gdiff/gdn.
+
+    Uses `schedule_and_run` to run `_run_gdiff_gdn_cleanup_and_notify` every day
+    at 07:00 and maintain its own stamp file.
+    """
+    import time
+    cache_dir = Path.home() / ".cache"
+    cache_dir.mkdir(exist_ok=True)
+
+    # Cron expression for every day at 07:00
+    schedule_and_run("0 7 * * *", _run_gdiff_gdn_cleanup_and_notify, cache_dir=cache_dir)
+
+
 def _run_cleantmp_and_notify() -> None:
     """Run cleantmp and show macOS notification."""
     # Run the cleantmp function directly
@@ -2546,6 +2561,26 @@ def _run_cleantmp_and_notify() -> None:
     # Show macOS notification
     try:
         _notify_macos("Old files and empty folders cleaned from ~/tmp ✅", title="Weekly Cleanup")
+    except Exception as e:
+        typer.secho(f"⚠️  Could not show notification: {e}", fg=typer.colors.YELLOW)
+
+
+def _run_gdiff_gdn_cleanup_and_notify() -> None:
+    """Clean files beginning with `gdiff` or `gdn` older than 2 days and notify macOS.
+
+    This reuses `cleantmp_cmd` with a filename regex to target files starting with
+    `gdiff` or `gdn` and uses a 2-day cutoff.
+    """
+    # Clean files whose names start with 'gdiff' or 'gdn' older than 2 days
+    try:
+        cleantmp_cmd(days=2, pattern=r'^(?:gdiff|gdn)')
+    except Exception as e:
+        typer.secho(f"⚠️  gdiff/gdn cleanup failed: {e}", fg=typer.colors.YELLOW)
+        raise
+
+    # Notify the user on macOS (best-effort)
+    try:
+        _notify_macos("Cleaned gdiff/gdn files older than 2 days ✅", title="gdiff Cleanup")
     except Exception as e:
         typer.secho(f"⚠️  Could not show notification: {e}", fg=typer.colors.YELLOW)
 
