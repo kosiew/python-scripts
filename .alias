@@ -915,8 +915,5 @@ weekly_tmp_cleaner() {
   run_alias_py weekly_tmp_cleaner
 }
 
-notify_cleantmp() {
-  osascript -e 'display notification "Old files and empty folders cleaned from ~/tmp ✅" with title "Weekly Cleanup"'
-}
 
 add-zsh-hook precmd weekly_tmp_cleaner
