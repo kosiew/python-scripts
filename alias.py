@@ -2418,8 +2418,69 @@ def imuse(
     issue_to_file(url=url, prompt=prompt, prefix="imuse", no_open=no_open, editor=editor)
 
 
-if __name__ == "__main__":
-    app()
+@app.command(name="cleantmp")
+def cleantmp_cmd(
+    days: int = typer.Option(30, "--days", "-d", help="Delete files older than this many days")
+) -> None:
+    """Clean ~/tmp directory by removing old files and empty directories.
+    
+    This function:
+    1. Deletes files older than the specified number of days (default: 30)
+    2. Removes empty directories (excluding vim_swap and pycache)
+    3. Provides feedback on the cleanup process
+    """
+    import time
+    
+    tmp_dir = Path.home() / "tmp"
+    
+    if not tmp_dir.exists():
+        typer.secho(f"📁 ~/tmp directory doesn't exist, nothing to clean.", fg=typer.colors.YELLOW)
+        return
+    
+    typer.secho("🧹 Cleaning ~/tmp...", fg=typer.colors.CYAN)
+    typer.secho(f"🗑️  Deleting files older than {days} days...", fg=typer.colors.CYAN)
+    
+    # Calculate cutoff time (days ago from now)
+    cutoff_time = time.time() - (days * 24 * 60 * 60)
+    
+    # Delete old files
+    files_deleted = 0
+    for file_path in tmp_dir.rglob("*"):
+        if file_path.is_file():
+            try:
+                if file_path.stat().st_mtime < cutoff_time:
+                    typer.echo(f"Deleting: {file_path}")
+                    file_path.unlink()
+                    files_deleted += 1
+            except (OSError, PermissionError) as e:
+                typer.secho(f"⚠️  Could not delete {file_path}: {e}", fg=typer.colors.YELLOW)
+    
+    typer.secho(f"📄 Deleted {files_deleted} old files", fg=typer.colors.GREEN)
+    
+    # Delete empty directories (excluding vim_swap and pycache)
+    typer.secho("📂 Deleting empty folders (excluding vim_swap and pycache)...", fg=typer.colors.CYAN)
+    
+    dirs_deleted = 0
+    # Walk directories in reverse order (deepest first) to handle nested empty dirs
+    for dir_path in sorted(tmp_dir.rglob("*"), key=lambda p: len(p.parts), reverse=True):
+        if dir_path.is_dir() and dir_path != tmp_dir:
+            # Skip excluded directories
+            if dir_path.name in ("vim_swap", "pycache", "__pycache__"):
+                continue
+            
+            try:
+                # Check if directory is empty
+                if not any(dir_path.iterdir()):
+                    typer.echo(f"Deleting empty dir: {dir_path}")
+                    dir_path.rmdir()
+                    dirs_deleted += 1
+            except (OSError, PermissionError) as e:
+                typer.secho(f"⚠️  Could not delete {dir_path}: {e}", fg=typer.colors.YELLOW)
+    
+    typer.secho(f"📁 Deleted {dirs_deleted} empty directories", fg=typer.colors.GREEN)
+    typer.secho("✅ Cleanup complete!", fg=typer.colors.GREEN)
+
+
 
 
 @app.command(name="clean_old_zcompdump")
@@ -2445,3 +2506,62 @@ def clean_old_zcompdump_cmd() -> None:
 
     if count > 0:
         typer.secho(f"🗑️  Cleaned up {count} old zcompdump file(s)!", fg=typer.colors.GREEN)
+
+
+@app.command(name="weekly_tmp_cleaner")
+def weekly_tmp_cleaner_cmd() -> None:
+    """Check if it's time to run weekly tmp cleanup and execute if needed.
+    
+    This function:
+    1. Checks if a week has passed since the last cleanup
+    2. Runs cleantmp and shows macOS notification if it's time
+    3. Maintains a timestamp file to track the last run
+    """
+    import time
+    
+    # Set up paths
+    cache_dir = Path.home() / ".cache"
+    stamp_file = cache_dir / ".cleantmp_last_run"
+    now = int(time.time())
+    one_week = 60 * 60 * 24 * 7
+    
+    # Create cache directory if it doesn't exist
+    cache_dir.mkdir(exist_ok=True)
+    
+    # Check if stamp file exists
+    if not stamp_file.exists():
+        # First run - create stamp file and run cleanup
+        stamp_file.write_text(str(now))
+        _run_cleantmp_and_notify()
+        return
+    
+    # Check if a week has passed
+    try:
+        last_run = int(stamp_file.read_text().strip())
+        if now - last_run >= one_week:
+            _run_cleantmp_and_notify()
+            stamp_file.write_text(str(now))
+    except (ValueError, OSError) as e:
+        # If we can't read the timestamp, treat as first run
+        typer.secho(f"⚠️  Could not read timestamp file: {e}. Running cleanup.", fg=typer.colors.YELLOW)
+        stamp_file.write_text(str(now))
+        _run_cleantmp_and_notify()
+
+
+def _run_cleantmp_and_notify() -> None:
+    """Run cleantmp and show macOS notification."""
+    # Run the cleantmp function directly
+    cleantmp_cmd(days=30)
+    
+    # Show macOS notification
+    try:
+        _run([
+            "osascript", "-e", 
+            'display notification "Old files and empty folders cleaned from ~/tmp ✅" with title "Weekly Cleanup"'
+        ], check=False)
+    except Exception as e:
+        typer.secho(f"⚠️  Could not show notification: {e}", fg=typer.colors.YELLOW)
+
+
+if __name__ == "__main__":
+    app()

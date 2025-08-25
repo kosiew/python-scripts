@@ -905,41 +905,14 @@ files_to_prompt_command() {
 
 # Function: Clean tmp files older than given days (default 30)
 cleantmp() {
-  DAYS=${1:-30}
-  echo "Cleaning ~/tmp..."
-  echo "Deleting files older than $DAYS days..."
-  find ~/tmp -type f -mtime +$DAYS -print -delete
-
-  echo "Deleting empty folders (excluding vim_swap and pycache)..."
-  find ~/tmp \
-    \( -path ~/tmp/vim_swap -o -path ~/tmp/pycache \) -prune -o \
-    -type d -empty -print -delete
-
-  echo "Cleanup complete ✅"
+  run_alias_py cleantmp "$@"
 }
 
 # Hook: Run cleantmp once a week with macOS notification
 autoload -U add-zsh-hook
 
 weekly_tmp_cleaner() {
-  local stamp_file="$HOME/.cache/.cleantmp_last_run"
-  local now=$(date +%s)
-  local one_week=$((60 * 60 * 24 * 7))
-
-  if [[ ! -f "$stamp_file" ]]; then
-    mkdir -p "$(dirname "$stamp_file")"
-    echo "$now" > "$stamp_file"
-    cleantmp
-    notify_cleantmp
-    return
-  fi
-
-  local last_run=$(<"$stamp_file")
-  if (( now - last_run >= one_week )); then
-    cleantmp
-    notify_cleantmp
-    echo "$now" > "$stamp_file"
-  fi
+  run_alias_py weekly_tmp_cleaner
 }
 
 notify_cleantmp() {
