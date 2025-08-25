@@ -8,7 +8,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from string import Template
-from typing import Optional, List
+from typing import Optional, List, Callable
 
 import typer
 
@@ -2420,7 +2420,8 @@ def imuse(
 
 @app.command(name="cleantmp")
 def cleantmp_cmd(
-    days: int = typer.Option(30, "--days", "-d", help="Delete files older than this many days")
+    days: int = typer.Option(30, "--days", "-d", help="Delete files older than this many days"),
+    pattern: Optional[str] = typer.Option(None, "--pattern", "-p", help="Optional regex pattern to match filenames to delete")
 ) -> None:
     """Clean ~/tmp directory by removing old files and empty directories.
     
@@ -2443,12 +2444,20 @@ def cleantmp_cmd(
     # Calculate cutoff time (days ago from now)
     cutoff_time = time.time() - (days * 24 * 60 * 60)
     
+    # Prepare optional filename regex
+    import re
+    filename_re = re.compile(pattern) if pattern else None
+
     # Delete old files
     files_deleted = 0
     for file_path in tmp_dir.rglob("*"):
         if file_path.is_file():
             try:
                 if file_path.stat().st_mtime < cutoff_time:
+                    # If a pattern was provided, only delete when filename matches
+                    if filename_re is not None and not filename_re.search(file_path.name):
+                        continue
+
                     typer.echo(f"Deleting: {file_path}")
                     file_path.unlink()
                     files_deleted += 1
@@ -2520,7 +2529,6 @@ def weekly_tmp_cleaner_cmd() -> None:
     
     # Set up paths
     cache_dir = Path.home() / ".cache"
-    stamp_file = cache_dir / ".cleantmp_last_run"
     
     # Create cache directory if it doesn't exist
     cache_dir.mkdir(exist_ok=True)
@@ -2582,85 +2590,10 @@ def _parse_cron_field(field: str, min_val: int, max_val: int) -> set[int]:
     return vals
 
 
-def _is_cron_schedule_due(stamp_file: Path, cron_expr: str, *, now_dt: 'datetime' | None = None, now_epoch: int | None = None) -> bool:
-    """Return True if the cron schedule identified by `cron_expr` is due compared to stamp_file.
-
-    This implements a minimal cron evaluator for standard 5-field cron strings:
-      minute hour day month weekday
-
-    It computes the most recent scheduled datetime <= now and returns True if the
-    stamp_file indicates that run hasn't occurred yet.
-    """
-    from datetime import datetime, timedelta
-    import time as _time
-
-    if now_dt is None:
-        now_dt = datetime.now()
-    if now_epoch is None:
-        now_epoch = int(_time.time())
-
-    parts = cron_expr.split()
-    if len(parts) != 5:
-        raise ValueError("cron_expr must have 5 fields: minute hour day month weekday")
-
-    minute_field, hour_field, day_field, month_field, weekday_field = parts
-
-    minutes = _parse_cron_field(minute_field, 0, 59)
-    hours = _parse_cron_field(hour_field, 0, 23)
-    days = _parse_cron_field(day_field, 1, 31)
-    months = _parse_cron_field(month_field, 1, 12)
-    weekdays = _parse_cron_field(weekday_field, 0, 6)  # Monday=0
-
-    # Walk backward up to 7 days to find the most recent matching schedule
-    candidate = now_dt.replace(second=0, microsecond=0)
-    for days_back in range(0, 8):
-        day_candidate = candidate - timedelta(days=days_back)
-        if day_candidate.month not in months:
-            continue
-        if day_candidate.day not in days:
-            continue
-        if day_candidate.weekday() not in weekdays:
-            continue
-
-        # For the matching date, find the latest hour/minute <= now if same day, else the latest matching
-        if days_back == 0:
-            # same day: try hours <= current hour, minutes <= current minute
-            hr_list = sorted([h for h in hours if h <= day_candidate.hour], reverse=True)
-            for h in hr_list:
-                min_list = sorted([m for m in minutes if (h < day_candidate.hour and True) or m <= day_candidate.minute], reverse=True)
-                for m in min_list:
-                    scheduled = day_candidate.replace(hour=h, minute=m, second=0, microsecond=0)
-                    scheduled_epoch = int(scheduled.timestamp())
-                    # ensure scheduled <= now
-                    if scheduled_epoch <= now_epoch:
-                        break
-                else:
-                    continue
-                break
-            else:
-                # no schedule found earlier today
-                continue
-        else:
-            # prior day: pick the latest hour/minute combination
-            h = max(hours)
-            m = max(minutes)
-            scheduled = day_candidate.replace(hour=h, minute=m, second=0, microsecond=0)
-            scheduled_epoch = int(scheduled.timestamp())
-
-        # Check if this scheduled time is after the last run
-        try:
-            if stamp_file.exists():
-                last_run = int(stamp_file.read_text().strip())
-                return scheduled_epoch > last_run
-            else:
-                return True  # First run
-        except (ValueError, OSError):
-            return True  # Treat read errors as first run
-
-    return False
 
 
-def schedule_and_run(cron_expr: str, task: callable, *, cache_dir: Path | None = None) -> None:
+
+def schedule_and_run(cron_expr: str, task: Callable[[], None], *, cache_dir: Optional[Path] = None) -> None:
     """Schedule wrapper that uses `cron_expr` to decide whether to run `task`.
 
     - Creates a stamp file under cache_dir derived from the cron expression.
@@ -2707,7 +2640,7 @@ def schedule_and_run(cron_expr: str, task: callable, *, cache_dir: Path | None =
             task()
 
 
-def _get_last_scheduled_epoch(cron_expr: str, *, now_dt: 'datetime' | None = None, now_epoch: int | None = None) -> int | None:
+def _get_last_scheduled_epoch(cron_expr: str, *, now_dt: Optional[datetime] = None, now_epoch: Optional[int] = None) -> Optional[int]:
     """Return the most recent scheduled epoch (<= now) for `cron_expr`, or None if none found.
 
     Uses the same evaluation as `_is_cron_schedule_due` but returns the scheduled epoch so callers
