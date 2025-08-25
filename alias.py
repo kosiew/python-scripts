@@ -2512,40 +2512,42 @@ def clean_old_zcompdump_cmd() -> None:
 def weekly_tmp_cleaner_cmd() -> None:
     """Check if it's time to run weekly tmp cleanup and execute if needed.
     
-    This function:
-    1. Checks if a week has passed since the last cleanup
-    2. Runs cleantmp and shows macOS notification if it's time
-    3. Maintains a timestamp file to track the last run
+    This function uses cron-like scheduling to run cleanup every Monday at 7:00 AM.
+    It maintains a timestamp file to track the last run and only executes when due.
     """
+    from datetime import datetime
     import time
     
     # Set up paths
     cache_dir = Path.home() / ".cache"
     stamp_file = cache_dir / ".cleantmp_last_run"
-    now = int(time.time())
-    one_week = 60 * 60 * 24 * 7
     
     # Create cache directory if it doesn't exist
     cache_dir.mkdir(exist_ok=True)
     
-    # Check if stamp file exists
-    if not stamp_file.exists():
-        # First run - create stamp file and run cleanup
-        stamp_file.write_text(str(now))
-        _run_cleantmp_and_notify()
-        return
+    # Cron expression for Monday at 7:00 AM (minute hour day month weekday)
+    cron_expr = "0 7 * * 1"  # Monday=1 in this cron format
     
-    # Check if a week has passed
-    try:
-        last_run = int(stamp_file.read_text().strip())
-        if now - last_run >= one_week:
-            _run_cleantmp_and_notify()
-            stamp_file.write_text(str(now))
-    except (ValueError, OSError) as e:
-        # If we can't read the timestamp, treat as first run
-        typer.secho(f"⚠️  Could not read timestamp file: {e}. Running cleanup.", fg=typer.colors.YELLOW)
-        stamp_file.write_text(str(now))
-        _run_cleantmp_and_notify()
+    now_dt = datetime.now()
+    now_epoch = int(time.time())
+    
+    # Get the most recent scheduled epoch for this cron expression
+    scheduled_epoch = _get_last_scheduled_epoch(cron_expr, now_dt=now_dt, now_epoch=now_epoch)
+    
+    if scheduled_epoch is not None:
+        # Check if we need to run based on the last run timestamp
+        try:
+            if stamp_file.exists():
+                last_run = int(stamp_file.read_text().strip())
+            else:
+                last_run = 0  # First run
+        except (ValueError, OSError):
+            last_run = 0  # Treat read errors as first run
+        
+        # Run if current time >= scheduled time and we haven't run since the scheduled time
+        if now_epoch >= scheduled_epoch and last_run < scheduled_epoch:
+            with _stamp_on_success(stamp_file, scheduled_epoch):
+                _run_cleantmp_and_notify()
 
 
 def _run_cleantmp_and_notify() -> None:
@@ -2572,6 +2574,188 @@ def _notify_macos(message: str, title: str = "Notification") -> None:
     except Exception:
         # swallowing errors is intentional here; callers may log or surface if needed
         pass
+
+
+def _parse_cron_field(field: str, min_val: int, max_val: int) -> set[int]:
+    """Parse a single cron field and return a set of matching values.
+    
+    Supports:
+    - '*' for all values
+    - Single numbers (e.g., '5')
+    - Comma-separated lists (e.g., '1,3,5')
+    - Ranges (e.g., '1-5')
+    """
+    vals = set()
+    
+    if field == "*":
+        vals.update(range(min_val, max_val + 1))
+        return vals
+    
+    for part in field.split(","):
+        part = part.strip()
+        if "-" in part and not part.startswith("-"):
+            # Range like "1-5"
+            a, b = part.split("-", 1)
+            vals.update(range(int(a), int(b) + 1))
+        else:
+            vals.add(int(part))
+    return vals
+
+
+def _is_cron_schedule_due(stamp_file: Path, cron_expr: str, *, now_dt: 'datetime' | None = None, now_epoch: int | None = None) -> bool:
+    """Return True if the cron schedule identified by `cron_expr` is due compared to stamp_file.
+
+    This implements a minimal cron evaluator for standard 5-field cron strings:
+      minute hour day month weekday
+
+    It computes the most recent scheduled datetime <= now and returns True if the
+    stamp_file indicates that run hasn't occurred yet.
+    """
+    from datetime import datetime, timedelta
+    import time as _time
+
+    if now_dt is None:
+        now_dt = datetime.now()
+    if now_epoch is None:
+        now_epoch = int(_time.time())
+
+    parts = cron_expr.split()
+    if len(parts) != 5:
+        raise ValueError("cron_expr must have 5 fields: minute hour day month weekday")
+
+    minute_field, hour_field, day_field, month_field, weekday_field = parts
+
+    minutes = _parse_cron_field(minute_field, 0, 59)
+    hours = _parse_cron_field(hour_field, 0, 23)
+    days = _parse_cron_field(day_field, 1, 31)
+    months = _parse_cron_field(month_field, 1, 12)
+    weekdays = _parse_cron_field(weekday_field, 0, 6)  # Monday=0
+
+    # Walk backward up to 7 days to find the most recent matching schedule
+    candidate = now_dt.replace(second=0, microsecond=0)
+    for days_back in range(0, 8):
+        day_candidate = candidate - timedelta(days=days_back)
+        if day_candidate.month not in months:
+            continue
+        if day_candidate.day not in days:
+            continue
+        if day_candidate.weekday() not in weekdays:
+            continue
+
+        # For the matching date, find the latest hour/minute <= now if same day, else the latest matching
+        if days_back == 0:
+            # same day: try hours <= current hour, minutes <= current minute
+            hr_list = sorted([h for h in hours if h <= day_candidate.hour], reverse=True)
+            for h in hr_list:
+                min_list = sorted([m for m in minutes if (h < day_candidate.hour and True) or m <= day_candidate.minute], reverse=True)
+                for m in min_list:
+                    scheduled = day_candidate.replace(hour=h, minute=m, second=0, microsecond=0)
+                    scheduled_epoch = int(scheduled.timestamp())
+                    # ensure scheduled <= now
+                    if scheduled_epoch <= now_epoch:
+                        break
+                else:
+                    continue
+                break
+            else:
+                # no schedule found earlier today
+                continue
+        else:
+            # prior day: pick the latest hour/minute combination
+            h = max(hours)
+            m = max(minutes)
+            scheduled = day_candidate.replace(hour=h, minute=m, second=0, microsecond=0)
+            scheduled_epoch = int(scheduled.timestamp())
+
+        # Check if this scheduled time is after the last run
+        try:
+            if stamp_file.exists():
+                last_run = int(stamp_file.read_text().strip())
+                return scheduled_epoch > last_run
+            else:
+                return True  # First run
+        except (ValueError, OSError):
+            return True  # Treat read errors as first run
+
+    return False
+
+
+def _get_last_scheduled_epoch(cron_expr: str, *, now_dt: 'datetime' | None = None, now_epoch: int | None = None) -> int | None:
+    """Return the most recent scheduled epoch (<= now) for `cron_expr`, or None if none found.
+
+    Uses the same evaluation as `_is_cron_schedule_due` but returns the scheduled epoch so callers
+    can take action (and stamp) using that precise time.
+    """
+    from datetime import datetime, timedelta
+    import time as _time
+
+    if now_dt is None:
+        now_dt = datetime.now()
+    if now_epoch is None:
+        now_epoch = int(_time.time())
+
+    parts = cron_expr.split()
+    if len(parts) != 5:
+        raise ValueError("cron_expr must have 5 fields: minute hour day month weekday")
+
+    minute_field, hour_field, day_field, month_field, weekday_field = parts
+
+    minutes = _parse_cron_field(minute_field, 0, 59)
+    hours = _parse_cron_field(hour_field, 0, 23)
+    days = _parse_cron_field(day_field, 1, 31)
+    months = _parse_cron_field(month_field, 1, 12)
+    weekdays = _parse_cron_field(weekday_field, 0, 6)  # Monday=0
+
+    candidate = now_dt.replace(second=0, microsecond=0)
+    for days_back in range(0, 8):
+        day_candidate = candidate - timedelta(days=days_back)
+        if day_candidate.month not in months:
+            continue
+        if day_candidate.day not in days:
+            continue
+        if day_candidate.weekday() not in weekdays:
+            continue
+
+        if days_back == 0:
+            hr_list = sorted([h for h in hours if h <= day_candidate.hour], reverse=True)
+            for h in hr_list:
+                min_list = sorted([m for m in minutes if (h < day_candidate.hour and True) or m <= day_candidate.minute], reverse=True)
+                for m in min_list:
+                    scheduled = day_candidate.replace(hour=h, minute=m, second=0, microsecond=0)
+                    scheduled_epoch = int(scheduled.timestamp())
+                    if scheduled_epoch <= now_epoch:
+                        return scheduled_epoch
+            continue
+        else:
+            h = max(hours)
+            m = max(minutes)
+            scheduled = day_candidate.replace(hour=h, minute=m, second=0, microsecond=0)
+            scheduled_epoch = int(scheduled.timestamp())
+            return scheduled_epoch
+
+    return None
+
+
+from contextlib import contextmanager
+
+
+@contextmanager
+def _stamp_on_success(stamp_file: Path, epoch: int):
+    """Context manager that writes `epoch` to `stamp_file` if the block succeeds.
+
+    If the block raises, the stamp is not updated.
+    """
+    try:
+        yield
+    except Exception:
+        # re-raise, do not stamp
+        raise
+    else:
+        try:
+            stamp_file.write_text(str(epoch))
+        except Exception:
+            # best-effort: ignore write failures
+            pass
 
 
 if __name__ == "__main__":
