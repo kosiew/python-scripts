@@ -708,9 +708,10 @@ def ctest(
     typer.secho(f"🔧 Assembled command: {' '.join(cmd)}", fg=typer.colors.CYAN)
     try:
         typer.echo("🔁 Running cargo test...")
-        proc = _run(cmd, check=False)
+        # Capture both stdout and stderr so the tmp file includes all output (equivalent to shell `2>&1`).
+        proc = subprocess.run(cmd, check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         out = proc.stdout or ""
-        typer.secho("💾 Captured cargo test output.", fg=typer.colors.CYAN)
+        typer.secho("💾 Captured cargo test output (stdout+stderr).", fg=typer.colors.CYAN)
     except Exception as exc:
         typer.secho(f"❌ Failed to run cargo test (is cargo installed?): {exc}", fg=typer.colors.RED)
         raise typer.Exit(1)
