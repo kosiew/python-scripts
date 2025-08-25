@@ -2555,12 +2555,23 @@ def _run_cleantmp_and_notify() -> None:
     
     # Show macOS notification
     try:
-        _run([
-            "osascript", "-e", 
-            'display notification "Old files and empty folders cleaned from ~/tmp ✅" with title "Weekly Cleanup"'
-        ], check=False)
+        _notify_macos("Old files and empty folders cleaned from ~/tmp ✅", title="Weekly Cleanup")
     except Exception as e:
         typer.secho(f"⚠️  Could not show notification: {e}", fg=typer.colors.YELLOW)
+
+
+def _notify_macos(message: str, title: str = "Notification") -> None:
+    """Show a macOS notification using osascript.
+
+    This is a tiny helper to centralize macOS notification logic so it can be
+    reused elsewhere in `alias.py`.
+    """
+    try:
+        # Use the lightweight _run helper to execute osascript; allow failures silently
+        _run(["osascript", "-e", f'display notification "{message}" with title "{title}"'], check=False)
+    except Exception:
+        # swallowing errors is intentional here; callers may log or surface if needed
+        pass
 
 
 if __name__ == "__main__":
