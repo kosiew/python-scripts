@@ -1435,7 +1435,7 @@ def _delete_branch(branch: str) -> None:
 @app.command(help="Swap messages of the last two commits (swapmsgs)")
 def swapmsgs(
     dry_run: bool = typer.Option(False, "--dry-run", help="Show planned actions without changing history"),
-    keep_backup: bool = typer.Option(True, "--keep-backup/--no-keep-backup", help="Keep a backup branch at HEAD before rewriting"),
+    keep_backup: bool = typer.Option(False, "--keep-backup/--no-keep-backup", help="Keep a backup branch at HEAD before rewriting"),
 ) -> None:
     """Orchestrate swapping the messages of the last two commits using small helpers."""
     _git_require_repo_or_exit()
