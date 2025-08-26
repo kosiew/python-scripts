@@ -2559,12 +2559,12 @@ def weekly_tmp_cleaner_cmd() -> None:
 def daily_gdiff_cleaner_cmd() -> None:
     """Schedule and run daily cleanup for files starting with gdiff/gdn.
 
-    Uses `schedule_and_run` to run `_run_gdiff_gdn_cleanup_and_notify` every day
+    Uses `schedule_and_run` to run `_run_prefixed_cleanup_and_notify` every day
     at 07:00 and maintain its own stamp file.
     """
 
     # Cron expression for every day at 07:00
-    schedule_and_run("0 7 * * *", _run_gdiff_gdn_cleanup_and_notify)
+    schedule_and_run("0 7 * * *", _run_prefixed_cleanup_and_notify)
 
 
 @app.command(name="weekly_zcompdump_cleaner")
@@ -2592,22 +2592,40 @@ def _run_cleantmp_and_notify() -> None:
         typer.secho(f"⚠️  Could not show notification: {e}", fg=typer.colors.YELLOW)
 
 
-def _run_gdiff_gdn_cleanup_and_notify() -> None:
-    """Clean files beginning with `gdiff` or `gdn` older than 2 days and notify macOS.
+def _run_prefixed_cleanup_and_notify(prefixes: List[str] = ["gdiff", "gdn", "ctest"]) -> None:
+    """Clean files whose names begin with any of `prefixes` older than 2 days and notify macOS.
 
-    This reuses `cleantmp_cmd` with a filename regex to target files starting with
-    `gdiff` or `gdn` and uses a 2-day cutoff.
+    Args:
+        prefixes: optional list of filename prefixes (e.g. ['gdiff', 'gdn', 'ctest']).
+                  If omitted, defaults to ['gdiff', 'gdn', 'ctest'].
+
+    This reuses `cleantmp_cmd` with a filename regex constructed from `prefixes`.
     """
-    # Clean files whose names start with 'gdiff' or 'gdn' older than 2 days
+    # Make a shallow copy to avoid accidental mutation of the default list
+    prefixes = list(prefixes) if prefixes is not None else ["gdiff", "gdn", "ctest"]
+
+    # Build a safe regex that matches names starting with any of the prefixes.
+    # Escape each prefix to avoid regex metacharacters causing surprises.
     try:
-        cleantmp_cmd(days=2, pattern=r'^(?:gdiff|gdn)')
+        safe_parts = [re.escape(p) for p in prefixes if p]
+        if not safe_parts:
+            # nothing to do
+            return
+        pattern = r"^(?:" + "|".join(safe_parts) + ")"
+    except Exception:
+        pattern = r"^(?:gdiff|gdn|ctest)"
+
+    # Clean files whose names start with the given prefixes older than 2 days
+    try:
+        cleantmp_cmd(days=2, pattern=pattern)
     except Exception as e:
-        typer.secho(f"⚠️  gdiff/gdn cleanup failed: {e}", fg=typer.colors.YELLOW)
+        typer.secho(f"⚠️  cleanup failed for prefixes={prefixes}: {e}", fg=typer.colors.YELLOW)
         raise
 
     # Notify the user on macOS (best-effort)
     try:
-        _notify_macos("Cleaned gdiff/gdn files older than 2 days ✅", title="gdiff Cleanup")
+        joined = ",".join(prefixes)
+        _notify_macos(f"Cleaned {joined} files older than 2 days ✅", title="Cleanup")
     except Exception as e:
         typer.secho(f"⚠️  Could not show notification: {e}", fg=typer.colors.YELLOW)
 
