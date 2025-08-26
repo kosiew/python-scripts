@@ -2487,6 +2487,19 @@ def cleantmp_cmd(
     # Calculate cutoff time (days ago from now)
     cutoff_time = time.time() - (days * 24 * 60 * 60)
     
+    # Coerce Typer OptionInfo (or other non-str values) to None when called
+    # programmatically so we don't pass a non-string to re.compile.
+    if pattern is not None and not isinstance(pattern, str):
+        try:
+            # Typer sometimes passes an OptionInfo object when invoked programmatically;
+            # fall back to treating it as no pattern.
+            from typer.models import OptionInfo  # type: ignore
+            if isinstance(pattern, OptionInfo):
+                pattern = None
+        except Exception:
+            # Generic fallback: if it's not a str, treat as None
+            pattern = None
+
     # Use reusable helper to remove files
     files_deleted = find_and_remove_old_files("tmp", days=days, pattern=pattern)
     typer.secho(f"📄 Deleted {files_deleted} old files", fg=typer.colors.GREEN)
