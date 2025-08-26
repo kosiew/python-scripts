@@ -1372,6 +1372,140 @@ def gcopybranch() -> None:
     typer.echo(branch)
 
 
+def _git_require_repo_or_exit() -> None:
+    try:
+        _run(["git", "rev-parse", "--git-dir"])  
+    except Exception:
+        typer.secho("❌ Not a git repository.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+
+def _git_commit_count() -> int:
+    try:
+        return int((_run(["git", "rev-list", "--count", "HEAD"], check=False).stdout or "0").strip())
+    except Exception:
+        return 0
+
+
+def _ensure_clean_index_or_exit() -> None:
+    if _run(["git", "diff", "--quiet"], check=False).returncode != 0 or _run(["git", "diff", "--cached", "--quiet"], check=False).returncode != 0:
+        typer.secho("❌ Working tree or index not clean. Commit or stash changes first.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+
+def _get_head_and_prev() -> tuple[str, str]:
+    sha_head = _run(["git", "rev-parse", "HEAD"]).stdout.strip()
+    sha_prev = _run(["git", "rev-parse", "HEAD~1"]).stdout.strip()
+    return sha_head, sha_prev
+
+
+def _get_commit_message(sha: str) -> str:
+    return _run(["git", "log", "-1", "--pretty=%B", sha]).stdout or ""
+
+
+def _create_branch(branch: str) -> None:
+    _run(["git", "branch", branch])
+
+
+def _checkout_new_branch_at(branch: str, ref: str) -> None:
+    _run(["git", "checkout", "-b", branch, ref])
+
+
+def _cherry_pick_no_commit(sha: str) -> None:
+    _run(["git", "cherry-pick", "--no-commit", sha])
+
+
+def _commit_with_message(message: str) -> None:
+    _run(["git", "commit", "-m", message])
+
+
+def _abort_cherry_pick_safe() -> None:
+    _run(["git", "cherry-pick", "--abort"], check=False)
+
+
+def _reset_branch_hard(branch: str, target: str) -> None:
+    _run(["git", "checkout", branch])
+    _run(["git", "reset", "--hard", target])
+
+
+def _delete_branch(branch: str) -> None:
+    _run(["git", "branch", "-D", branch], check=False)
+
+
+@app.command(help="Swap messages of the last two commits (swapmsgs)")
+def swapmsgs(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show planned actions without changing history"),
+    keep_backup: bool = typer.Option(True, "--keep-backup/--no-keep-backup", help="Keep a backup branch at HEAD before rewriting"),
+) -> None:
+    """Orchestrate swapping the messages of the last two commits using small helpers."""
+    _git_require_repo_or_exit()
+
+    if _git_commit_count() < 2:
+        typer.secho("❌ Need at least two commits to swap messages.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    _ensure_clean_index_or_exit()
+
+    sha_head, sha_prev = _get_head_and_prev()
+    msg_head = _get_commit_message(sha_head)
+    msg_prev = _get_commit_message(sha_prev)
+
+    cur_branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+    backup_branch = f"swapmsgs-backup-{_nowstamp()}"
+    tmp_branch = f"swapmsgs-tmp-{_nowstamp()}"
+
+    typer.secho(f"🔍 Preparing to swap messages on branch: {cur_branch}", fg=typer.colors.CYAN)
+    typer.secho(f"   commits: {sha_prev} (older), {sha_head} (HEAD)")
+
+    if dry_run:
+        typer.echo("Planned steps:")
+        typer.echo(f"  - Create backup branch: {backup_branch} at HEAD")
+        typer.echo(f"  - Create temporary branch {tmp_branch} at HEAD~2")
+        typer.echo(f"  - Cherry-pick --no-commit {sha_prev} and commit with message from {sha_head}")
+        typer.echo(f"  - Cherry-pick --no-commit {sha_head} and commit with message from {sha_prev}")
+        typer.echo(f"  - Reset {cur_branch} to {tmp_branch} and delete {tmp_branch}")
+        raise typer.Exit(0)
+
+    try:
+        _create_branch(backup_branch)
+        typer.secho(f"💾 Backup branch created: {backup_branch}", fg=typer.colors.GREEN)
+    except Exception as exc:
+        typer.secho(f"❌ Failed to create backup branch: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    try:
+        _checkout_new_branch_at(tmp_branch, "HEAD~2")
+        _cherry_pick_no_commit(sha_prev)
+        _commit_with_message(msg_head)
+        _cherry_pick_no_commit(sha_head)
+        _commit_with_message(msg_prev)
+    except Exception as exc:
+        typer.secho(f"❌ Failed while creating swapped commits: {exc}", fg=typer.colors.RED)
+        _abort_cherry_pick_safe()
+        try:
+            _run(["git", "checkout", cur_branch], check=False)
+        except Exception:
+            pass
+        typer.secho(f"👉 Your original branch is preserved on backup: {backup_branch}", fg=typer.colors.YELLOW)
+        raise typer.Exit(1)
+
+    try:
+        _reset_branch_hard(cur_branch, tmp_branch)
+    except Exception as exc:
+        typer.secho(f"❌ Failed to update branch {cur_branch}: {exc}", fg=typer.colors.RED)
+        typer.secho(f"👉 Your original branch is preserved on backup: {backup_branch}", fg=typer.colors.YELLOW)
+        raise typer.Exit(1)
+
+    _delete_branch(tmp_branch)
+
+    if keep_backup:
+        typer.secho(f"✅ Swapped messages. Backup branch left at: {backup_branch}", fg=typer.colors.GREEN)
+    else:
+        _delete_branch(backup_branch)
+        typer.secho("✅ Swapped messages. Backup branch removed.", fg=typer.colors.GREEN)
+
+
+
 @app.command(help="Apply a patch from the clipboard (handles fenced code blocks) (gappdiff)")
 def gappdiff(dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Check whether patch would apply without applying")) -> None:
     """Read clipboard (macOS pbpaste), strip code fences and non-patch text, save to a temp file,
