@@ -2555,9 +2555,9 @@ def weekly_tmp_cleaner_cmd() -> None:
     schedule_and_run("0 7 * * 1", _run_cleantmp_and_notify)
 
 
-@app.command(name="daily_gdiff_cleaner")
-def daily_gdiff_cleaner_cmd() -> None:
-    """Schedule and run daily cleanup for files starting with gdiff/gdn.
+@app.command(name="daily_prefixed_cleaner")
+def daily_prefixed_cleaner_cmd() -> None:
+    """Schedule and run daily cleanup for files matching configured prefixes.
 
     Uses `schedule_and_run` to run `_run_prefixed_cleanup_and_notify` every day
     at 07:00 and maintain its own stamp file.
@@ -2565,6 +2565,20 @@ def daily_gdiff_cleaner_cmd() -> None:
 
     # Cron expression for every day at 07:00
     schedule_and_run("0 7 * * *", _run_prefixed_cleanup_and_notify)
+
+
+@app.command(name="daily_gdiff_cleaner")
+def daily_gdiff_cleaner_cmd() -> None:
+    """Compatibility wrapper for the old `daily_gdiff_cleaner` command.
+
+    Calls the new `daily_prefixed_cleaner_cmd`. Kept to avoid breaking existing
+    workflows; this wrapper may be removed in the future.
+    """
+    try:
+        typer.secho("⚠️ 'daily_gdiff_cleaner' is deprecated; use 'daily_prefixed_cleaner' instead.", fg=typer.colors.YELLOW)
+    except Exception:
+        pass
+    daily_prefixed_cleaner_cmd()
 
 
 @app.command(name="weekly_zcompdump_cleaner")
