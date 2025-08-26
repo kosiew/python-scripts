@@ -2592,8 +2592,8 @@ def _run_cleantmp_and_notify() -> None:
         typer.secho(f"⚠️  Could not show notification: {e}", fg=typer.colors.YELLOW)
 
 
-def _run_prefixed_cleanup_and_notify(prefixes: List[str] = ["gdiff", "gdn", "ctest"]) -> None:
-    """Clean files whose names begin with any of `prefixes` older than 2 days and notify macOS.
+def _run_prefixed_cleanup_and_notify(prefixes: List[str] = ["gdiff", "gdn", "ctest", "crun"]) -> None:
+    """Clean files whose names begin with any of `prefixes` older than 1 days and notify macOS.
 
     Args:
         prefixes: optional list of filename prefixes (e.g. ['gdiff', 'gdn', 'ctest']).
@@ -2617,7 +2617,7 @@ def _run_prefixed_cleanup_and_notify(prefixes: List[str] = ["gdiff", "gdn", "cte
 
     # Clean files whose names start with the given prefixes older than 2 days
     try:
-        cleantmp_cmd(days=2, pattern=pattern)
+        cleantmp_cmd(days=1, pattern=pattern)
     except Exception as e:
         typer.secho(f"⚠️  cleanup failed for prefixes={prefixes}: {e}", fg=typer.colors.YELLOW)
         raise
