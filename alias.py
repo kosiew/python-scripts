@@ -35,7 +35,8 @@ def _run(cmd: list[str], **kw) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, **kw)
 
 def _nowstamp() -> str:
-    return datetime.now().strftime("%Y-%m-%d_%H-%M")
+    # include seconds for finer-grained timestamps
+    return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 def _extract_id(url: str) -> str:
     try:
