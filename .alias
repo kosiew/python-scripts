@@ -920,7 +920,7 @@ daily_prefixed_cleaner() {
 }
 
 swapmsgs() {
-  run_alias_py swapmsgs 
+  run_alias_py swapmsgs "$@" 
 }
 
 add-zsh-hook precmd weekly_tmp_cleaner
