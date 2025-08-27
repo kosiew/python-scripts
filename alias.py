@@ -1009,6 +1009,90 @@ def gsync() -> None:
     typer.secho(f"✅ Synced with upstream/{branch}", fg=typer.colors.GREEN)
 
 
+@app.command(help="Review branch workflow: diff vs main (excluding AGENTS.md), revert, and force push")
+def greview_branch() -> None:
+    """Execute the review branch workflow:
+    
+    1. Get diff vs main (excluding AGENTS.md) and copy to clipboard
+    2. Run grevdiff to reverse apply the diff
+    3. Commit with message "UNPICK revert branch"
+    4. Revert the last commit
+    5. Force push with lease
+    6. Copy commit hash to clipboard
+    
+    AGENTS.md is retained but excluded from the diff to avoid including it in the review.
+    """
+    # Step 1: Get diff vs main (excluding AGENTS.md) and copy to clipboard
+    typer.secho("🔍 Getting diff vs main (excluding AGENTS.md)...", fg=typer.colors.CYAN)
+    try:
+        main_branch = _git_main_branch() or "main"
+        # Use git diff with path exclusion to exclude AGENTS.md
+        diff_proc = _run(["git", "diff", main_branch, "--", ".", ":(exclude)AGENTS.md"])
+        diff_text = diff_proc.stdout or ""
+        
+        # Copy to clipboard on macOS
+        if sys.platform == "darwin" and _which("pbcopy"):
+            try:
+                p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
+                p.communicate(diff_text.encode())
+                typer.secho("📋 Diff (excluding AGENTS.md) copied to clipboard", fg=typer.colors.GREEN)
+            except Exception:
+                typer.secho("⚠️ Failed to copy to clipboard", fg=typer.colors.YELLOW)
+        else:
+            typer.secho("📋 Diff generated (clipboard copy not available)", fg=typer.colors.GREEN)
+            
+    except Exception as exc:
+        typer.secho(f"❌ Failed to get diff: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Step 2: Run grevdiff
+    typer.secho("↩️ Running grevdiff...", fg=typer.colors.CYAN)
+    try:
+        grevdiff()
+        typer.secho("✅ grevdiff completed", fg=typer.colors.GREEN)
+    except Exception as exc:
+        typer.secho(f"❌ grevdiff failed: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Step 3: Commit revert with gacommit
+    typer.secho("📝 Committing revert...", fg=typer.colors.CYAN)
+    try:
+        gacommit(["UNPICK revert branch"])
+        typer.secho("✅ Committed revert", fg=typer.colors.GREEN)
+    except Exception as exc:
+        typer.secho(f"❌ Failed to commit revert: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Step 4: Git revert HEAD
+    typer.secho("🔄 Reverting HEAD commit...", fg=typer.colors.CYAN)
+    try:
+        _run(["git", "revert", "--no-edit", "HEAD"])
+        typer.secho("✅ Reverted HEAD commit", fg=typer.colors.GREEN)
+    except Exception as exc:
+        typer.secho(f"❌ Failed to revert: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Step 5: Force push with lease
+    typer.secho("🚀 Force pushing with lease...", fg=typer.colors.CYAN)
+    try:
+        _run(["git", "push", "--force-with-lease"])
+        typer.secho("✅ Force pushed with lease", fg=typer.colors.GREEN)
+    except Exception as exc:
+        typer.secho(f"❌ Failed to force push: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Step 6: Copy commit hash
+    typer.secho("📋 Copying commit hash...", fg=typer.colors.CYAN)
+    try:
+        gcopyhash()
+        typer.secho("✅ Commit hash copied", fg=typer.colors.GREEN)
+    except Exception as exc:
+        typer.secho(f"❌ Failed to copy hash: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    typer.secho("🎉 Review branch workflow completed successfully!", fg=typer.colors.GREEN, bold=True)
+
+
 @app.command(help="Squash a range of commits into one and apply to a target branch (gsquash)")
 def gsquash(
     c1: str = typer.Argument(..., help="Oldest commit in range (ancestor)"),
