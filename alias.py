@@ -2738,7 +2738,7 @@ def _run_prefixed_cleanup_and_notify(prefixes: List[str] = ["gdiff", "gdn", "cte
     """
     # Make a shallow copy to avoid accidental mutation of the default list
     prefixes = list(prefixes) if prefixes is not None else ["gdiff", "gdn", "ctest"]
-
+    DAYS = 1
     # Build a safe regex that matches names starting with any of the prefixes.
     # Escape each prefix to avoid regex metacharacters causing surprises.
     try:
@@ -2752,7 +2752,7 @@ def _run_prefixed_cleanup_and_notify(prefixes: List[str] = ["gdiff", "gdn", "cte
 
     # Clean files whose names start with the given prefixes older than 2 days
     try:
-        cleantmp_cmd(days=1, pattern=pattern)
+        cleantmp_cmd(days=DAYS, pattern=pattern)
     except Exception as e:
         typer.secho(f"⚠️  cleanup failed for prefixes={prefixes}: {e}", fg=typer.colors.YELLOW)
         raise
@@ -2760,7 +2760,8 @@ def _run_prefixed_cleanup_and_notify(prefixes: List[str] = ["gdiff", "gdn", "cte
     # Notify the user on macOS (best-effort)
     try:
         joined = ",".join(prefixes)
-        _notify_macos(f"Cleaned {joined} files older than 2 days ✅", title="Cleanup")
+        day_message = "1 day" if DAYS == 1 else f"{DAYS} days"
+        _notify_macos(f"Cleaned {joined} files older than {day_message} ✅", title="Cleanup")
     except Exception as e:
         typer.secho(f"⚠️  Could not show notification: {e}", fg=typer.colors.YELLOW)
 
