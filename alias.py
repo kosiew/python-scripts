@@ -1096,7 +1096,64 @@ def greview_branch() -> None:
         typer.secho(f"❌ Failed to copy hash: {exc}", fg=typer.colors.RED)
         raise typer.Exit(1)
 
-    typer.secho("🎉 Review branch workflow completed successfully!", fg=typer.colors.GREEN, bold=True)
+    typer.secho("🎉 Review branch workflow completed successfully! Codex Ask, use ggreviewpr snippet", fg=typer.colors.GREEN, bold=True)
+
+
+@app.command(help="Review PR workflow: wait for confirmation, apply diff, commit, push, and copy hash")
+def greview_pr() -> None:
+    """Execute the review PR workflow:
+    
+    1. Pause and wait for confirmation that PR diff has been copied
+    2. Run gappdiff to apply the patch from clipboard
+    3. Commit with message "CHANGES to review" using gacommit
+    4. Push changes to remote
+    5. Copy commit hash to clipboard
+    """
+    # Step 1: Wait for confirmation that PR diff has been copied
+    typer.secho("📋 Please copy the PR diff to your clipboard first.", fg=typer.colors.YELLOW, bold=True)
+    typer.secho("💡 Tip: You can use the browser to copy the diff from GitHub PR page.", fg=typer.colors.CYAN)
+    
+    if not typer.confirm("👉 Have you copied the PR diff to clipboard?", default=False):
+        typer.secho("❌ Cancelled: Please copy the PR diff first.", fg=typer.colors.RED)
+        raise typer.Exit(0)
+
+    # Step 2: Run gappdiff
+    typer.secho("📥 Applying patch from clipboard...", fg=typer.colors.CYAN)
+    try:
+        gappdiff()
+        typer.secho("✅ Patch applied successfully", fg=typer.colors.GREEN)
+    except Exception as exc:
+        typer.secho(f"❌ Failed to apply patch: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Step 3: Commit with gacommit
+    typer.secho("📝 Committing changes...", fg=typer.colors.CYAN)
+    try:
+        gacommit(["CHANGES to review"])
+        typer.secho("✅ Changes committed", fg=typer.colors.GREEN)
+    except Exception as exc:
+        typer.secho(f"❌ Failed to commit changes: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Step 4: Git push
+    typer.secho("🚀 Pushing changes to remote...", fg=typer.colors.CYAN)
+    try:
+        _run(["git", "push"])
+        typer.secho("✅ Changes pushed to remote", fg=typer.colors.GREEN)
+    except Exception as exc:
+        typer.secho(f"❌ Failed to push changes: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Step 5: Copy commit hash
+    typer.secho("📋 Copying commit hash...", fg=typer.colors.CYAN)
+    try:
+        gcopyhash()
+        typer.secho("✅ Commit hash copied", fg=typer.colors.GREEN)
+    except Exception as exc:
+        typer.secho(f"❌ Failed to copy hash: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    typer.secho("🎉 Review PR workflow completed successfully!. Now go to Codex Ask, use ggreviewpr snippet", fg=typer.colors.GREEN, bold=True)
 
 
 @app.command(help="Squash a range of commits into one and apply to a target branch (gsquash)")

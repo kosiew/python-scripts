@@ -923,6 +923,10 @@ greview_branch() {
   run_alias_py greview-branch "$@"
 }
 
+greview_pr() {
+  run_alias_py greview-pr "$@"
+}
+
 swapmsgs() {
   run_alias_py swapmsgs "$@" 
 }
