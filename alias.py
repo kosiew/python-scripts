@@ -1021,7 +1021,7 @@ def greview_branch() -> None:
     
     1. Get diff vs main (excluding AGENTS.md) and copy to clipboard
     2. Run grevdiff to reverse apply the diff
-    3. Commit with message "UNPICK revert branch"
+    3. Commit with message "revert branch UNPICK"
     4. Revert the last commit
     5. Force push with lease
     6. Copy commit hash to clipboard
@@ -1063,7 +1063,7 @@ def greview_branch() -> None:
     # Step 3: Commit revert with gacommit
     typer.secho("📝 Committing revert...", fg=typer.colors.CYAN)
     try:
-        gacommit(["UNPICK revert branch"])
+        gacommit(["revert branch UNPICK"])
         typer.secho("✅ Committed revert", fg=typer.colors.GREEN)
     except Exception as exc:
         typer.secho(f"❌ Failed to commit revert: {exc}", fg=typer.colors.RED)
