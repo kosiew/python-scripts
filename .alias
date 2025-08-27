@@ -920,7 +920,7 @@ daily_prefixed_cleaner() {
 }
 
 greview_branch() {
-  run_alias_py greview_branch "$@"
+  run_alias_py greview-branch "$@"
 }
 
 swapmsgs() {
