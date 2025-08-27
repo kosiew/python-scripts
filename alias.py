@@ -361,7 +361,7 @@ def gprhash(pr: str = typer.Argument(..., help="PR number, e.g. 43197")):
         typer.echo(line.split()[0])
 
 
-@app.command(help="Show git diff in various modes and copy output to clipboard (gdiff)")
+@app.command(help="Show git diff in various modes and copy output to clipboard (gdiff) - excludes AGENTS.md")
 def gdiff(args: List[str] = typer.Argument(None, help="Arguments forwarded to git diff")) -> None:
     """Mimic the shell `gdiff` helper with these modes:
       - gdiff <ref>                # compare working tree with <ref>
@@ -369,6 +369,7 @@ def gdiff(args: List[str] = typer.Argument(None, help="Arguments forwarded to gi
       - gdiff <commit> <files...>  # compare commit with specific files
       - gdiff                      # compare with repo main branch
 
+    AGENTS.md is automatically excluded from all diffs.
     The diff is written to ~/tmp/gdiff-<ts>.patch, copied to clipboard on macOS
     (pbcopy), and opened in $EDITOR (falls back to vi).
     """
@@ -377,21 +378,26 @@ def gdiff(args: List[str] = typer.Argument(None, help="Arguments forwarded to gi
     # Determine default branch if needed
     def_branch = _git_main_branch() or "main"
 
-    # Build git diff command depending on args
+    # Build git diff command depending on args - always exclude AGENTS.md
     if len(items) == 1:
-        typer.secho(f"🔍 Comparing working tree with: {items[0]}", fg=typer.colors.CYAN)
-        cmd = ["git", "diff", items[0]]
+        typer.secho(f"🔍 Comparing working tree with: {items[0]} (excluding AGENTS.md)", fg=typer.colors.CYAN)
+        cmd = ["git", "diff", items[0], "--", ".", ":(exclude)AGENTS.md"]
     elif len(items) == 2:
-        typer.secho(f"🔍 Comparing: {items[0]} ↔ {items[1]}", fg=typer.colors.CYAN)
-        cmd = ["git", "diff", items[0], items[1]]
+        typer.secho(f"🔍 Comparing: {items[0]} ↔ {items[1]} (excluding AGENTS.md)", fg=typer.colors.CYAN)
+        cmd = ["git", "diff", items[0], items[1], "--", ".", ":(exclude)AGENTS.md"]
     elif len(items) >= 3:
         commit = items[0]
         files = items[1:]
-        typer.secho(f"🔍 Comparing: {commit} with specific files: {' '.join(files)}", fg=typer.colors.CYAN)
-        cmd = ["git", "diff", commit, "--", *files]
+        # For specific files, only exclude AGENTS.md if it's not explicitly requested
+        if "AGENTS.md" not in files:
+            typer.secho(f"🔍 Comparing: {commit} with specific files: {' '.join(files)} (excluding AGENTS.md)", fg=typer.colors.CYAN)
+            cmd = ["git", "diff", commit, "--", *files, ":(exclude)AGENTS.md"]
+        else:
+            typer.secho(f"🔍 Comparing: {commit} with specific files: {' '.join(files)}", fg=typer.colors.CYAN)
+            cmd = ["git", "diff", commit, "--", *files]
     else:
-        typer.secho(f"🔍 No arguments provided. Comparing against default branch: {def_branch}", fg=typer.colors.CYAN)
-        cmd = ["git", "diff", def_branch]
+        typer.secho(f"🔍 No arguments provided. Comparing against default branch: {def_branch} (excluding AGENTS.md)", fg=typer.colors.CYAN)
+        cmd = ["git", "diff", def_branch, "--", ".", ":(exclude)AGENTS.md"]
 
     # Run git diff and capture output
     try:
