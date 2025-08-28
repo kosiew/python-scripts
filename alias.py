@@ -2129,7 +2129,14 @@ def gsign(args: List[str] = typer.Argument(None, help="Range or upstream and opt
         cmd.append(autosquash_flag)
     if rebase_merges_flag:
         cmd.append(rebase_merges_flag)
-    cmd.extend([upstream, branch])
+    
+    # Add upstream
+    cmd.append(upstream)
+    
+    # Only add branch if it's not HEAD and different from current branch
+    # This prevents detached HEAD state when rebasing the current branch
+    if branch != "HEAD" and branch != cur_branch:
+        cmd.append(branch)
 
     try:
         _run(cmd)
