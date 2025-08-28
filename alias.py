@@ -50,6 +50,7 @@ def _llm(flags: list[str], prompt: str, input_text: Optional[str] = None) -> str
     if not _which("llm"):
         return ""
     try:
+        typer.secho(f"🔍 Running LLM with flags: {flags}", fg=typer.colors.CYAN)
         proc = _run(["llm", *flags, prompt], input=input_text)
         return proc.stdout or ""
     except Exception:
