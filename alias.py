@@ -747,6 +747,69 @@ def ctest(
     _open_in_editor(outpath)
     typer.secho("✅ ctest finished.", fg=typer.colors.GREEN)
 
+
+@app.command(help="Run make with target, parse go failures, and open in vi (vmake)")
+def vmake(
+    target: str = typer.Argument("test-unit", help="Make target to run (default: test-unit)")
+) -> None:
+    """Run `make <target>`, pipe output through parser.py parse-go-failures, and open in vi.
+    
+    Equivalent to: make <target> 2>&1 | python parser.py parse-go-failures | vi -
+    """
+    parser_path = "/Users/kosiew/GitHub/python-scripts/parser.py"
+    
+    typer.secho(f"🔧 Running make {target} and parsing failures...", fg=typer.colors.CYAN)
+    
+    try:
+        # Run make command and capture output
+        make_proc = subprocess.run(
+            ["make", target], 
+            check=False, 
+            text=True, 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.STDOUT
+        )
+        make_output = make_proc.stdout or ""
+        
+        typer.secho("📝 Parsing go failures...", fg=typer.colors.CYAN)
+        
+        # Run parser on the make output
+        parser_proc = subprocess.run(
+            ["python", parser_path, "parse-go-failures"],
+            input=make_output,
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        parsed_output = parser_proc.stdout or ""
+        
+        if parser_proc.returncode != 0:
+            typer.secho(f"⚠️ Parser had issues: {parser_proc.stderr}", fg=typer.colors.YELLOW)
+        
+        typer.secho("🖥️ Opening parsed output in vi...", fg=typer.colors.GREEN)
+        
+        # Open the parsed output in vi using stdin
+        vi_proc = subprocess.run(
+            ["mvim", "-"],
+            input=parsed_output,
+            text=True,
+            check=False
+        )
+        
+        if vi_proc.returncode == 0:
+            typer.secho("✅ vmake finished.", fg=typer.colors.GREEN)
+        else:
+            typer.secho("⚠️ vi exited with non-zero status.", fg=typer.colors.YELLOW)
+            
+    except FileNotFoundError as exc:
+        typer.secho(f"❌ Command not found: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+    except Exception as exc:
+        typer.secho(f"❌ Failed to run vmake: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+
 @app.command(name="encode_and_copy")
 def encode_and_copy_cmd(
     text: str = typer.Argument(..., help="Text to base64-encode and copy to clipboard")

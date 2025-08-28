@@ -931,6 +931,10 @@ swapmsgs() {
   run_alias_py swapmsgs "$@" 
 }
 
+vmake() {
+  run_alias_py vmake "$@"
+}
+
 add-zsh-hook precmd weekly_tmp_cleaner
 add-zsh-hook precmd daily_prefixed_cleaner
 add-zsh-hook precmd weekly_zcompdump_cleaner
