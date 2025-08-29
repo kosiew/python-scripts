@@ -2895,14 +2895,14 @@ def cleantmp_cmd(
     typer.secho(f"📄 Deleted {files_deleted} old files", fg=typer.colors.GREEN)
     
     # Delete empty directories (excluding vim_swap and pycache)
-    typer.secho("📂 Deleting empty folders (excluding vim_swap and pycache)...", fg=typer.colors.CYAN)
+    typer.secho("📂 Deleting empty folders (excluding vim_swap, tools and pycache)...", fg=typer.colors.CYAN)
     
     dirs_deleted = 0
     # Walk directories in reverse order (deepest first) to handle nested empty dirs
     for dir_path in sorted(tmp_dir.rglob("*"), key=lambda p: len(p.parts), reverse=True):
         if dir_path.is_dir() and dir_path != tmp_dir:
             # Skip excluded directories
-            if dir_path.name in ("vim_swap", "pycache", "__pycache__"):
+            if dir_path.name in ("vim_swap", "tools", "pycache", "__pycache__"):
                 continue
             
             try:
