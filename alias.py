@@ -25,6 +25,30 @@ app = typer.Typer(
 # Utilities
 # -------------------------
 
+def _get_output_dir(filename: str) -> Path:
+    """Get the appropriate output directory based on file prefix.
+    
+    Files starting with issue IDs (ic prefix files) go to ~/tmp.
+    All other files go to ~/tmp/tools for better organization.
+    
+    Args:
+        filename: The filename to check for ic prefix patterns
+        
+    Returns:
+        Path object for the appropriate output directory
+    """
+    base_tmp = Path(os.path.expanduser("~/tmp"))
+    
+    # Check if this is an issue-related file (starts with issue ID pattern)
+    # Issue files typically have pattern: {issue_id}-{prefix}-{title}_{timestamp}.md
+    # They can have prefixes like: note, triage, ask, codex, comment, ictriage, icask, icodex, etc.
+    if re.match(r'^\d+-(ic?[a-z]*|note|triage|ask|codex|comment)', filename):
+        return base_tmp
+    
+    # All other files go to tools subdirectory
+    tools_dir = base_tmp / "tools"
+    return tools_dir
+
 def _which(name: str) -> bool:
     return any((Path(p) / name).exists() for p in os.environ.get("PATH", "").split(os.pathsep))
 
@@ -209,7 +233,10 @@ def _gen_summary_from_issue(url: str) -> str:
 def _gen_filename(issue_id: str, title_source: str, prefix: str = "note") -> Path:
     short = _gen_short_title(title_source)
     ts = _nowstamp()
-    return Path(os.path.expanduser("~/tmp")) / f"{issue_id}-{prefix}-{short}_{ts}.md"
+    filename = f"{issue_id}-{prefix}-{short}_{ts}.md"
+    outdir = _get_output_dir(filename)
+    outdir.mkdir(parents=True, exist_ok=True)
+    return outdir / filename
 
 # -------------------------
 # Template helpers
@@ -331,8 +358,10 @@ def clipboard_to_file(
     except Exception:
         pass
 
-    outpath = Path(os.path.expanduser("~/tmp")) / f"{prefix}-{short}_{_nowstamp()}.md"
-    outpath.parent.mkdir(parents=True, exist_ok=True)
+    filename = f"{prefix}-{short}_{_nowstamp()}.md"
+    outdir = _get_output_dir(filename)
+    outdir.mkdir(parents=True, exist_ok=True)
+    outpath = outdir / filename
 
     try:
         proc = _run(["llm", prompt], input=clip)
@@ -371,7 +400,7 @@ def gdiff(args: List[str] = typer.Argument(None, help="Arguments forwarded to gi
       - gdiff                      # compare with repo main branch
 
     AGENTS.md is automatically excluded from all diffs.
-    The diff is written to ~/tmp/gdiff-<ts>.patch, copied to clipboard on macOS
+    The diff is written to ~/tmp/tools/gdiff-<ts>.patch, copied to clipboard on macOS
     (pbcopy), and opened in $EDITOR (falls back to vi).
     """
     items = args or []
@@ -409,12 +438,12 @@ def gdiff(args: List[str] = typer.Argument(None, help="Arguments forwarded to gi
         raise typer.Exit(1)
 
     # Ensure tmp directory exists and write file; include current branch in filename
-    outdir = Path(os.path.expanduser("~/tmp"))
+    branch_clean = _get_git_branch()
+    filename = f"gdiff-{branch_clean}-{_nowstamp()}.patch"
+    outdir = _get_output_dir(filename)
     outdir.mkdir(parents=True, exist_ok=True)
 
-    branch_clean = _get_git_branch()
-
-    outpath = outdir / f"gdiff-{branch_clean}-{_nowstamp()}.patch"
+    outpath = outdir / filename
     outpath.write_text(diff_text, encoding="utf-8")
 
     # Copy to clipboard on macOS if pbcopy present
@@ -460,10 +489,11 @@ def gs(args: List[str] = typer.Argument(None, help="Arguments forwarded: [commit
         typer.secho("❌ git diff --stat failed or not a repository.", fg=typer.colors.RED)
         raise typer.Exit(1)
 
-    outdir = Path(os.path.expanduser("~/tmp"))
-    outdir.mkdir(parents=True, exist_ok=True)
     branch_clean = _get_git_branch()
-    outpath = outdir / f"gs-{branch_clean}-{_nowstamp()}.txt"
+    filename = f"gs-{branch_clean}-{_nowstamp()}.txt"
+    outdir = _get_output_dir(filename)
+    outdir.mkdir(parents=True, exist_ok=True)
+    outpath = outdir / filename
     outpath.write_text(output, encoding="utf-8")
 
     _open_in_editor(outpath, syntax_on=True)
@@ -590,9 +620,10 @@ def rust_clippy() -> None:
             proc = _run([str(script)], check=False)
             output = proc.stdout or ""
             typer.secho("💾 Capturing script output...", fg=typer.colors.CYAN)
-            outdir = Path(os.path.expanduser("~/tmp"))
+            filename = f"rust_clippy-{_nowstamp()}.txt"
+            outdir = _get_output_dir(filename)
             outdir.mkdir(parents=True, exist_ok=True)
-            outpath = outdir / f"rust_clippy-{_nowstamp()}.txt"
+            outpath = outdir / filename
             outpath.write_text(output, encoding="utf-8")
             typer.secho(f"✅ Wrote output to: {outpath}", fg=typer.colors.GREEN)
             typer.echo("🖥️ Opening output in editor...")
@@ -633,10 +664,11 @@ def ccheck(
         lines = lines[-tail:]
 
     content = "\n".join(lines)
-    outdir = Path(os.path.expanduser("~/tmp"))
-    outdir.mkdir(parents=True, exist_ok=True)
     branch_clean = _get_git_branch()
-    outpath = outdir / f"ccheck-{branch_clean}-{_nowstamp()}.txt"
+    filename = f"ccheck-{branch_clean}-{_nowstamp()}.txt"
+    outdir = _get_output_dir(filename)
+    outdir.mkdir(parents=True, exist_ok=True)
+    outpath = outdir / filename
     outpath.write_text(content, encoding="utf-8")
     typer.secho(f"✅ Wrote cargo check output to: {outpath}", fg=typer.colors.GREEN)
     typer.echo("🖥️ Opening output in editor...")
@@ -682,10 +714,11 @@ def crun(
         lines = lines[-tail:]
 
     content = "\n".join(lines)
-    outdir = Path(os.path.expanduser("~/tmp"))
-    outdir.mkdir(parents=True, exist_ok=True)
     branch_clean = _get_git_branch()
-    outpath = outdir / f"crun-{branch_clean}-{_nowstamp()}.txt"
+    filename = f"crun-{branch_clean}-{_nowstamp()}.txt"
+    outdir = _get_output_dir(filename)
+    outdir.mkdir(parents=True, exist_ok=True)
+    outpath = outdir / filename
     outpath.write_text(content, encoding="utf-8")
     typer.secho(f"✅ Wrote cargo output to: {outpath}", fg=typer.colors.GREEN)
     typer.echo("🖥️ Opening output in editor...")
@@ -737,10 +770,11 @@ def ctest(
         typer.echo(content)
         return
 
-    outdir = Path(os.path.expanduser("~/tmp"))
-    outdir.mkdir(parents=True, exist_ok=True)
     branch_clean = _get_git_branch()
-    outpath = outdir / f"ctest-{branch_clean}-{_nowstamp()}.txt"
+    filename = f"ctest-{branch_clean}-{_nowstamp()}.txt"
+    outdir = _get_output_dir(filename)
+    outdir.mkdir(parents=True, exist_ok=True)
+    outpath = outdir / filename
     outpath.write_text(content, encoding="utf-8")
     typer.secho(f"✅ Wrote cargo test output to: {outpath}", fg=typer.colors.GREEN)
     typer.echo("🖥️ Opening output in editor...")
@@ -1026,10 +1060,11 @@ def gdn(branch: Optional[str] = typer.Argument(None, help="Branch to compare aga
         raise typer.Exit(1)
 
     # Write to a temporary file and open in editor
-    tmp = Path(os.path.expanduser("~/tmp"))
-    tmp.mkdir(parents=True, exist_ok=True)
     current_branch = _get_git_branch()
-    outpath = tmp / f"gdn-{b}-{current_branch}-{_nowstamp()}.txt"
+    filename = f"gdn-{b}-{current_branch}-{_nowstamp()}.txt"
+    outdir = _get_output_dir(filename)
+    outdir.mkdir(parents=True, exist_ok=True)
+    outpath = outdir / filename
     outpath.write_text(output, encoding="utf-8")
     typer.secho(f"✅ Wrote git diff list to: {outpath}", fg=typer.colors.GREEN)
     typer.echo("🖥️ Opening output in editor...")
@@ -2042,8 +2077,10 @@ def gadded(branch: str = typer.Argument(..., help="Branch to compare against")) 
 
     content = "\n".join(lines)
 
-    outpath = Path(os.path.expanduser("~/tmp")) / f"gadded-{_nowstamp()}.txt"
-    outpath.parent.mkdir(parents=True, exist_ok=True)
+    filename = f"gadded-{_nowstamp()}.txt"
+    outdir = _get_output_dir(filename)
+    outdir.mkdir(parents=True, exist_ok=True)
+    outpath = outdir / filename
     outpath.write_text(content, encoding="utf-8")
 
     _open_in_editor(outpath)
