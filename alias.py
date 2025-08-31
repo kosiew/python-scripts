@@ -211,7 +211,7 @@ def _gen_short_title(title_source: str) -> str:
 def _gen_summary_from_issue(url: str) -> str:
     prompt = (
         "Summarize this GitHub issue concisely for a senior contributor.\n"
-        "- Max ~80 words total.\n"
+        "- Max ~500 words total.\n"
         "- Focus on the problem, scope, impact, and any constraints.\n"
         "- No code, no headers.\n"
         "- Prefer 3–6 tight bullet points if it helps clarity."
