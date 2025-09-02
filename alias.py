@@ -888,7 +888,7 @@ def rpipe(
     typer.secho(f"✅ Wrote command output to: {outpath}", fg=typer.colors.GREEN)
     typer.echo("🖥️ Opening output in editor...")
     _open_in_editor(outpath, editor=editor)
-    typer.secho("✅ rpipe finished.", fg=typer.colors.GREEN)
+    typer.secho(f"✅ {cmd_prefix} finished.", fg=typer.colors.GREEN)
 
 
 @app.command(name="encode_and_copy")

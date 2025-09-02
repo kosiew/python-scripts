@@ -931,6 +931,10 @@ swapmsgs() {
   run_alias_py swapmsgs "$@" 
 }
 
+rpipe() {
+  run_alias_py rpipe "$@"
+}
+
 vmake() {
   run_alias_py vmake "$@"
 }
