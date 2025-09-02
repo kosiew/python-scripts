@@ -935,6 +935,9 @@ rpipe() {
   run_alias_py rpipe "$@"
 }
 
+alias rmaturin="rpipe maturin develop --uv"
+alias rpytest="rpipe pytest --lf"
+
 squash_commits() {
   run_alias_py squash-commits "$@"
 }
