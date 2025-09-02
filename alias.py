@@ -428,7 +428,113 @@ def commits_between(
     for msg in messages:
         typer.echo(msg)
     # Return all messages as a single joined string (for programmatic use)
-    return "\n".join(messages)
+    all_messages = "\n".join(messages)
+    if sys.platform == "darwin" and _which("pbcopy"):
+        try:
+            p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
+            p.communicate(all_messages.encode())
+            typer.secho("📋 Commit messages copied to clipboard!", fg=typer.colors.GREEN)
+        except Exception:
+            typer.secho("⚠️ Failed to copy to clipboard.", fg=typer.colors.YELLOW)
+    else:
+        typer.echo("📋 Commit messages:\n" + all_messages)
+
+
+@app.command(help="Squash commits between two refs (inclusive) into a single commit with a summarized message")
+def squash_commits(
+    commit1: str = typer.Argument(..., help="Older commit ref (start of range)") ,
+    commit2: str = typer.Argument(..., help="Newer commit ref (end of range; must be HEAD for automatic squash)"),
+    backup: bool = typer.Option(True, "--no-backup/--backup", help="Create a backup branch before rewriting history"),
+    preview: bool = typer.Option(False, "--preview", help="Show planned summary and git commands without executing"),
+) -> None:
+    """Squash commits from commit1..commit2 (inclusive) into a single commit.
+
+    For safety the command only performs the automated soft-reset + commit when
+    `commit2` is HEAD. If `commit2` is not HEAD this helper will print guidance
+    for an interactive rebase instead.
+    """
+    # helper to collect messages
+    def _collect_messages(rng: str) -> List[str]:
+        try:
+            proc = _run(["git", "log", "--pretty=format:%s", rng], check=False)
+            out = (proc.stdout or "").strip()
+            return [l for l in out.splitlines() if l.strip()]
+        except Exception:
+            return []
+
+    # verify git repo
+    try:
+        _run(["git", "rev-parse", "--git-dir"], check=True)
+    except Exception:
+        typer.secho("❌ Not a git repository.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Determine if commit2 equals HEAD
+    try:
+        proc = _run(["git", "rev-parse", "--verify", "HEAD"], check=False)
+        head_sha = (proc.stdout or "").strip()
+        proc2 = _run(["git", "rev-parse", "--verify", commit2], check=False)
+        commit2_sha = (proc2.stdout or "").strip()
+    except Exception:
+        typer.secho("❌ Failed to resolve commits. Ensure refs exist.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    messages = _collect_messages(f"{commit1}..{commit2}") or _collect_messages(f"{commit2}..{commit1}")
+    typer.secho("📋 Found commit messages:\n", fg=typer.colors.CYAN)
+    for msg in messages:
+        typer.echo(f" - {msg}")
+    if not messages:
+        typer.secho("No commits found between the supplied refs.", fg=typer.colors.YELLOW)
+        raise typer.Exit(0)
+
+    # Build a summarized message using LLM if available, else join subjects
+    summary = ", ".join(messages)
+
+    typer.secho("📋 Planned squash summary:\n", fg=typer.colors.CYAN)
+    typer.echo(summary)
+
+    if preview:
+        typer.secho("🔎 Preview mode: no git operations will be run.", fg=typer.colors.YELLOW)
+        typer.echo("Planned commands:")
+        if backup:
+            typer.echo(f"  git branch backup/squash-{_nowstamp()}")
+        # If commit2 is HEAD, we can soft-reset to commit1^ and commit
+        if commit2_sha == head_sha:
+            typer.echo(f"  git reset --soft {commit1}^")
+            typer.echo("  git commit -m '<summary from above>'")
+        else:
+            typer.echo("  # commit2 is not HEAD; consider: git rebase -i <commit1>^ and squash manually")
+        raise typer.Exit(0)
+
+    # Create backup branch
+    if backup:
+        bk = f"backup-squash-{_nowstamp()}"
+        try:
+            _run(["git", "branch", bk])
+            typer.secho(f"✅ Backup branch created: {bk}", fg=typer.colors.GREEN)
+        except Exception:
+            typer.secho("⚠️ Failed to create backup branch; aborting to avoid data loss.", fg=typer.colors.RED)
+            raise typer.Exit(1)
+
+    # If commit2 is HEAD, perform soft-reset and commit
+    if commit2_sha == head_sha:
+        try:
+            # Reset soft to just before commit1 so all changes are staged
+            _run(["git", "reset", "--soft", f"{commit1}^"])
+            # Commit with the summarized message
+            _run(["git", "commit", "-m", summary])
+            typer.secho("✅ Commits squashed into a single commit.", fg=typer.colors.GREEN)
+        except Exception as exc:
+            typer.secho(f"❌ Failed to perform squash operation: {exc}", fg=typer.colors.RED)
+            typer.secho("Your backup branch preserves the previous history.", fg=typer.colors.YELLOW)
+            raise typer.Exit(1)
+    else:
+        typer.secho("⚠️ Automatic squash only supported when the end ref is HEAD.", fg=typer.colors.YELLOW)
+        typer.secho("Suggested manual steps:", fg=typer.colors.CYAN)
+        typer.echo(f"  1. git rebase -i {commit1}^   # mark commits to squash")
+        typer.echo("  2. edit commit message to the summary printed above")
+        typer.echo("A backup branch has been created to preserve current history.")
+        raise typer.Exit(0)
 
 @app.command(help="Show git diff in various modes and copy output to clipboard (gdiff) - excludes AGENTS.md")
 def gdiff(args: List[str] = typer.Argument(None, help="Arguments forwarded to git diff")) -> None:

@@ -935,6 +935,9 @@ rpipe() {
   run_alias_py rpipe "$@"
 }
 
+squash_commits() {
+  run_alias_py squash-commits "$@"
+}
 
 commits_between() {
   run_alias_py commits-between "$@"
