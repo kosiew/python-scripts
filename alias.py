@@ -3029,7 +3029,7 @@ def _run_cleantmp_and_notify() -> None:
         typer.secho(f"⚠️  Could not show notification: {e}", fg=typer.colors.YELLOW)
 
 
-def _run_prefixed_cleanup_and_notify(prefixes: List[str] = ["gdiff-", "gdn-", "gs-", "ctest-", "crun-"]) -> None:
+def _run_prefixed_cleanup_and_notify(prefixes: List[str] = ["gdiff-", "gdn-", "gs-", "ctest-", "crun-", "maturin-"]) -> None:
     """Clean files whose names begin with any of `prefixes` older than 1 days and notify macOS.
 
     Args:
