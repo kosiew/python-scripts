@@ -70,6 +70,9 @@ def _extract_id(url: str) -> str:
         pass
     return url.rstrip("/").split("/")[-1]
 
+
+
+
 def _llm(flags: list[str], prompt: str, input_text: Optional[str] = None) -> str:
     if not _which("llm"):
         return ""
@@ -390,6 +393,42 @@ def gprhash(pr: str = typer.Argument(..., help="PR number, e.g. 43197")):
     for line in out.splitlines():
         typer.echo(line.split()[0])
 
+
+@app.command(help="Print all commit messages between two commits (inclusive of range)")
+def commits_between(
+    commit1: str = typer.Argument(..., help="First commit ref (hash, branch, tag)"),
+    commit2: str = typer.Argument(..., help="Second commit ref (hash, branch, tag)"),
+):
+    """Print commit messages between commit1 and commit2.
+
+    Tries the range `commit1..commit2` first. If that yields no results (or errors),
+    it will try the reverse `commit2..commit1` so the command is forgiving about
+    the order of arguments.
+    """
+    def _run_log(rng: str) -> List[str]:
+        try:
+            proc = _run(["git", "log", "--pretty=format:%s", rng], check=False)
+            out = (proc.stdout or "").strip()
+            return [l for l in out.splitlines() if l.strip()]
+        except Exception:
+            return []
+
+    # try commit1..commit2 first
+    rng = f"{commit1}..{commit2}"
+    messages = _run_log(rng)
+    if not messages:
+        # try reverse range
+        rng = f"{commit2}..{commit1}"
+        messages = _run_log(rng)
+
+    if not messages:
+        typer.secho("No commits found between the supplied refs or not a git repository.", fg=typer.colors.YELLOW)
+        raise typer.Exit(0)
+
+    for msg in messages:
+        typer.echo(msg)
+    # Return all messages as a single joined string (for programmatic use)
+    return "\n".join(messages)
 
 @app.command(help="Show git diff in various modes and copy output to clipboard (gdiff) - excludes AGENTS.md")
 def gdiff(args: List[str] = typer.Argument(None, help="Arguments forwarded to git diff")) -> None:

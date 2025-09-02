@@ -935,6 +935,11 @@ rpipe() {
   run_alias_py rpipe "$@"
 }
 
+
+commits_between() {
+  run_alias_py commits-between "$@"
+}
+
 vmake() {
   run_alias_py vmake "$@"
 }
