@@ -822,7 +822,7 @@ def vmake(
             typer.secho(f"⚠️ Parser had issues: {parser_proc.stderr}", fg=typer.colors.YELLOW)
         
         typer.secho("🖥️ Opening parsed output in vi...", fg=typer.colors.GREEN)
-        
+
         # Open the parsed output in vi using stdin
         vi_proc = subprocess.run(
             ["mvim", "-"],
@@ -830,18 +830,65 @@ def vmake(
             text=True,
             check=False
         )
-        
+
         if vi_proc.returncode == 0:
             typer.secho("✅ vmake finished.", fg=typer.colors.GREEN)
         else:
             typer.secho("⚠️ vi exited with non-zero status.", fg=typer.colors.YELLOW)
-            
+
     except FileNotFoundError as exc:
         typer.secho(f"❌ Command not found: {exc}", fg=typer.colors.RED)
         raise typer.Exit(1)
     except Exception as exc:
         typer.secho(f"❌ Failed to run vmake: {exc}", fg=typer.colors.RED)
         raise typer.Exit(1)
+
+
+@app.command(help="Run arbitrary shell command, capture stdout+stderr and open in editor (rpipe)", context_settings={"ignore_unknown_options": True, "allow_extra_args": True})
+def rpipe(
+    ctx: typer.Context,
+    cmd: List[str] = typer.Argument(..., help="Command and args to run; pass as separate tokens or quoted string"),
+    editor: Optional[str] = typer.Option(None, "--editor", "-e", help="Editor to open the output file with"),
+    verbose: bool = typer.Option(False, "-v", help="If set, print output to stdout instead of opening editor")
+) -> None:
+    """Run an arbitrary shell command, capture stdout+stderr (2>&1), and open the result in the editor.
+
+    Example: rpipe maturin develop --uv  -> runs `maturin develop --uv 2>&1` and opens in $EDITOR via tmp file
+    Supports passing extra args via the CLI context (mirrors ctest behavior).
+    """
+    # Build command: combine explicit cmd tokens and any extra args captured by Typer's ctx
+    extra = list(getattr(ctx, "args", []) or [])
+    full_cmd = list(cmd) + extra
+
+    typer.secho(f"🔧 Running command: {' '.join(full_cmd)}", fg=typer.colors.CYAN)
+    try:
+        proc = subprocess.run(full_cmd, check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        out = proc.stdout or ""
+        typer.secho("💾 Captured command output (stdout+stderr).", fg=typer.colors.CYAN)
+    except Exception as exc:
+        typer.secho(f"❌ Failed to run command: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    if verbose:
+        typer.echo(out)
+        return
+
+    # Write output to a tools tmp file and open in editor
+    branch_clean = _get_git_branch() or "local"
+    # Use the first command token as a filename prefix (sanitized)
+    cmd_prefix = (full_cmd[0] if full_cmd else "rpipe").replace('/', '_')
+    # sanitize non-alphanumeric to hyphens and truncate
+    cmd_prefix = re.sub(r"[^A-Za-z0-9]+", "-", cmd_prefix).strip("-")[:40] or "rpipe"
+    filename = f"{cmd_prefix}-{branch_clean}-{_nowstamp()}.txt"
+    outdir = _get_output_dir(filename)
+    outdir.mkdir(parents=True, exist_ok=True)
+    outpath = outdir / filename
+    outpath.write_text(out, encoding="utf-8")
+
+    typer.secho(f"✅ Wrote command output to: {outpath}", fg=typer.colors.GREEN)
+    typer.echo("🖥️ Opening output in editor...")
+    _open_in_editor(outpath, editor=editor)
+    typer.secho("✅ rpipe finished.", fg=typer.colors.GREEN)
 
 
 @app.command(name="encode_and_copy")
