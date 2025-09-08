@@ -1354,7 +1354,7 @@ def greview_branch() -> None:
     # Step 3: Commit revert with gacommit
     typer.secho("📝 Committing revert...", fg=typer.colors.CYAN)
     try:
-        gacommit(["UNPICK"])
+        gacommit(["UNPICK changes to review"])
         typer.secho("✅ Committed revert", fg=typer.colors.GREEN)
     except Exception as exc:
         typer.secho(f"❌ Failed to commit revert: {exc}", fg=typer.colors.RED)
