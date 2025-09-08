@@ -1991,13 +1991,16 @@ def gappdiff(dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Check 
             out_lines.append(ln)
 
     patch_text = "\n".join(out_lines)
-    # Normalize CRLF
+    # Normalize CRLF and ensure the patch ends with a single trailing newline
+    # Some git apply flows expect a trailing blank line; make it explicit.
     patch_text = patch_text.replace("\r\n", "\n").replace("\r", "\n")
 
     if not patch_text.strip():
         typer.secho("❌ Clipboard doesn’t contain a valid patch (no 'diff --git').", fg=typer.colors.RED)
         raise typer.Exit(1)
 
+    if not patch_text.endswith("\n"):
+        patch_text += "\n"
     patch_path.write_text(patch_text, encoding="utf-8")
 
     # Determine repo root
@@ -2029,7 +2032,7 @@ def gappdiff(dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Check 
             raise typer.Exit(1)
 
     typer.secho("📥 Applying with --3way…", fg=typer.colors.CYAN)
-    proc = _run(["git", "apply", "--3way", "--index", str(patch_path)], check=False)
+    proc = _run(["git", "apply", "--3way", "--index", "--verbose", str(patch_path)], check=False)
     # git apply may exit non-zero but still stage changes when using --3way;
     # check for staged changes as the real indicator of success.
     if proc.returncode == 0:
