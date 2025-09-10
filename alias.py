@@ -2258,7 +2258,6 @@ def gfcommit() -> None:
     except Exception:
         typer.secho("❌ git diff failed or not a repository.", fg=typer.colors.RED)
         raise typer.Exit(1)
-    """
     typer.secho("🧨 Splitting last commit into individual file commits with AI-powered messages...", fg=typer.colors.CYAN)
 
     try:
