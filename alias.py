@@ -571,8 +571,20 @@ def gdiff(args: List[str] = typer.Argument(None, help="Arguments forwarded to gi
             typer.secho(f"🔍 Comparing: {commit} with specific files: {' '.join(files)}", fg=typer.colors.CYAN)
             cmd = ["git", "diff", commit, "--", *files]
     else:
-        typer.secho(f"🔍 No arguments provided. Comparing against default branch: {def_branch} (excluding AGENTS.md)", fg=typer.colors.CYAN)
-        cmd = ["git", "diff", def_branch, "--", ".", ":(exclude)AGENTS.md"]
+        # Prefer showing changes since the common ancestor with the main branch
+        try:
+            mb_proc = _run(["git", "merge-base", "HEAD", def_branch], check=False)
+            mb = (mb_proc.stdout or "").strip()
+            if mb:
+                # use the merge-base..HEAD range which is what the user requested
+                typer.secho(f"🔍 No arguments provided. Comparing merge-base {mb}..HEAD (excluding AGENTS.md)", fg=typer.colors.CYAN)
+                cmd = ["git", "diff", f"{mb}..HEAD", "--", ".", ":(exclude)AGENTS.md"]
+            else:
+                typer.secho(f"🔍 No merge-base found. Falling back to comparing against default branch: {def_branch} (excluding AGENTS.md)", fg=typer.colors.CYAN)
+                cmd = ["git", "diff", def_branch, "--", ".", ":(exclude)AGENTS.md"]
+        except Exception:
+            typer.secho(f"🔍 Failed to compute merge-base. Falling back to comparing against default branch: {def_branch} (excluding AGENTS.md)", fg=typer.colors.CYAN)
+            cmd = ["git", "diff", def_branch, "--", ".", ":(exclude)AGENTS.md"]
 
     # Run git diff and capture output
     try:
