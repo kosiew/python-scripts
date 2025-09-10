@@ -682,19 +682,20 @@ def gs(args: List[str] = typer.Argument(None, help="Arguments forwarded: [commit
       - gs                    # diff stat vs repo main
     """
     items = args or []
-    if len(items) == 1:
-        typer.secho(f"📊 Showing diff stat between working tree and: {items[0]}", fg=typer.colors.CYAN)
-        cmd = ["git", "diff", "--stat", items[0]]
-    elif len(items) == 2:
-        typer.secho(f"📊 Showing diff stat between: {items[0]} ↔ {items[1]}", fg=typer.colors.CYAN)
-        cmd = ["git", "diff", "--stat", items[0], items[1]]
-    elif len(items) == 0:
-        default_branch = _git_main_branch() or "main"
-        typer.secho(f"📊 No arguments provided. Showing diff stat against default branch: {default_branch}", fg=typer.colors.CYAN)
-        cmd = ["git", "diff", "--stat", default_branch]
+
+    # Use the same diff-building logic but ensure --stat is included
+    if len(items) >= 1:
+        # Build command normally and insert --stat after 'git' 'diff'
+        cmd, msg = _build_git_diff_cmd_and_msg(items)
+        if cmd[:2] == ["git", "diff"]:
+            cmd = ["git", "diff", "--stat"] + cmd[2:]
+        typer.secho(msg, fg=typer.colors.CYAN)
     else:
-        typer.secho("Usage: gs <commit_early> [<commit_late>]", fg=typer.colors.RED)
-        raise typer.Exit(1)
+        # no args: prefer merge-base..HEAD via helper and add --stat
+        cmd, msg = _build_git_diff_cmd_and_msg(items)
+        if cmd[:2] == ["git", "diff"]:
+            cmd = ["git", "diff", "--stat"] + cmd[2:]
+        typer.secho(msg, fg=typer.colors.CYAN)
 
     try:
         proc = _run(cmd, check=False)
@@ -2245,19 +2246,28 @@ def gfcommit() -> None:
         typer.secho("ℹ️ No changed files detected.", fg=typer.colors.YELLOW)
         raise typer.Exit(0)
 
-    # Parse second column (filename) from porcelain output; handle renamed entries
-    items = args or []
+    # Parse porcelain output to extract file paths and handle renames
+    files: List[str] = []
+    for ln in out.splitlines():
+        if not ln.strip():
+            continue
+        # rename lines may include '->' with old and new paths
+        if "->" in ln:
+            newpath = ln.split("->")[-1].strip()
+            files.append(newpath)
+        else:
+            parts = ln.split()
+            if len(parts) >= 2:
+                files.append(parts[1])
 
-    # Build command and run
-    cmd, msg = _build_git_diff_cmd_and_msg(items)
-    typer.secho(msg, fg=typer.colors.CYAN)
+    # Process each file with gfilecommit
+    for f in files:
+        try:
+            gfilecommit(f)
+        except Exception:
+            typer.secho(f"⚠️ Failed to process {f}; continuing.", fg=typer.colors.YELLOW)
 
-    try:
-        proc = _run(cmd, check=False)
-        diff_text = proc.stdout or ""
-    except Exception:
-        typer.secho("❌ git diff failed or not a repository.", fg=typer.colors.RED)
-        raise typer.Exit(1)
+    typer.secho("✅ Done! All files have been committed individually.", fg=typer.colors.GREEN)
     typer.secho("🧨 Splitting last commit into individual file commits with AI-powered messages...", fg=typer.colors.CYAN)
 
     try:
