@@ -289,7 +289,7 @@ def _get_git_branch() -> str:
     return re.sub(r"[^A-Za-z0-9\-_]", "-", branch)
 
 
-def _build_git_diff_cmd_and_msg(items: List[str]) -> tuple[list[str], str]:
+def _build_git_diff_cmd_and_msg(items: List[str], exclude_agents: bool = True) -> tuple[list[str], str]:
     """Return a git diff command list and a short info message for the given items.
 
     Rules mirror the previous `gdiff`/`greview_branch` logic:
@@ -301,15 +301,23 @@ def _build_git_diff_cmd_and_msg(items: List[str]) -> tuple[list[str], str]:
     def_branch = _git_main_branch() or "main"
 
     if len(items) == 1:
-        msg = f"🔍 Comparing working tree with: {items[0]} (excluding AGENTS.md)"
-        cmd = ["git", "diff", items[0], "--", ".", ":(exclude)AGENTS.md"]
+        msg = f"🔍 Comparing working tree with: {items[0]}"
+        if exclude_agents:
+            msg += " (excluding AGENTS.md)"
+            cmd = ["git", "diff", items[0], "--", ".", ":(exclude)AGENTS.md"]
+        else:
+            cmd = ["git", "diff", items[0], "--", "."]
     elif len(items) == 2:
-        msg = f"🔍 Comparing: {items[0]} ↔ {items[1]} (excluding AGENTS.md)"
-        cmd = ["git", "diff", items[0], items[1], "--", ".", ":(exclude)AGENTS.md"]
+        msg = f"🔍 Comparing: {items[0]} ↔ {items[1]}"
+        if exclude_agents:
+            msg += " (excluding AGENTS.md)"
+            cmd = ["git", "diff", items[0], items[1], "--", ".", ":(exclude)AGENTS.md"]
+        else:
+            cmd = ["git", "diff", items[0], items[1], "--", "."]
     elif len(items) >= 3:
         commit = items[0]
         files = items[1:]
-        if "AGENTS.md" not in files:
+        if "AGENTS.md" not in files and exclude_agents:
             msg = f"🔍 Comparing: {commit} with specific files: {' '.join(files)} (excluding AGENTS.md)"
             cmd = ["git", "diff", commit, "--", *files, ":(exclude)AGENTS.md"]
         else:
@@ -324,11 +332,19 @@ def _build_git_diff_cmd_and_msg(items: List[str]) -> tuple[list[str], str]:
             mb = ""
 
         if mb:
-            msg = f"🔍 No arguments provided. Comparing merge-base {mb}..HEAD (excluding AGENTS.md)"
-            cmd = ["git", "diff", f"{mb}..HEAD", "--", ".", ":(exclude)AGENTS.md"]
+            msg = f"🔍 No arguments provided. Comparing merge-base {mb}..HEAD"
+            if exclude_agents:
+                msg += " (excluding AGENTS.md)"
+                cmd = ["git", "diff", f"{mb}..HEAD", "--", ".", ":(exclude)AGENTS.md"]
+            else:
+                cmd = ["git", "diff", f"{mb}..HEAD", "--", "."]
         else:
-            msg = f"🔍 No arguments provided. Comparing against default branch: {def_branch} (excluding AGENTS.md)"
-            cmd = ["git", "diff", def_branch, "--", ".", ":(exclude)AGENTS.md"]
+            msg = f"🔍 No arguments provided. Comparing against default branch: {def_branch}"
+            if exclude_agents:
+                msg += " (excluding AGENTS.md)"
+                cmd = ["git", "diff", def_branch, "--", ".", ":(exclude)AGENTS.md"]
+            else:
+                cmd = ["git", "diff", def_branch, "--", "."]
 
     return cmd, msg
 
@@ -686,13 +702,13 @@ def gs(args: List[str] = typer.Argument(None, help="Arguments forwarded: [commit
     # Use the same diff-building logic but ensure --stat is included
     if len(items) >= 1:
         # Build command normally and insert --stat after 'git' 'diff'
-        cmd, msg = _build_git_diff_cmd_and_msg(items)
+        cmd, msg = _build_git_diff_cmd_and_msg(items, exclude_agents=False)
         if cmd[:2] == ["git", "diff"]:
             cmd = ["git", "diff", "--stat"] + cmd[2:]
         typer.secho(msg, fg=typer.colors.CYAN)
     else:
         # no args: prefer merge-base..HEAD via helper and add --stat
-        cmd, msg = _build_git_diff_cmd_and_msg(items)
+        cmd, msg = _build_git_diff_cmd_and_msg(items, exclude_agents=False)
         if cmd[:2] == ["git", "diff"]:
             cmd = ["git", "diff", "--stat"] + cmd[2:]
         typer.secho(msg, fg=typer.colors.CYAN)
@@ -1306,15 +1322,22 @@ def gdn(branch: Optional[str] = typer.Argument(None, help="Branch to compare aga
 
     If branch is omitted, attempt to detect the repo's main branch.
     """
-    b = branch
-    if not b:
-        b = _git_main_branch() or "main"
-
-    typer.secho(f"🔍 Comparing against branch: {b}", fg=typer.colors.CYAN)
+    # If a branch was provided, ask the helper to compare, else prefer merge-base..HEAD
+    items: List[str] = []
+    if branch:
+        items = [branch]
+    # Build command but ensure AGENTS.md is NOT excluded
+    cmd, msg = _build_git_diff_cmd_and_msg(items, exclude_agents=False)
+    typer.secho(msg, fg=typer.colors.CYAN)
 
     try:
         typer.echo("🔁 Running git diff --name-only...")
-        proc = _run(["git", "diff", "--name-only", b])
+        # Replace 'git diff' with 'git diff --name-only' while preserving range/paths
+        if cmd[:2] == ["git", "diff"]:
+            cmd2 = ["git", "diff", "--name-only"] + cmd[2:]
+        else:
+            cmd2 = cmd
+        proc = _run(cmd2)
         output = proc.stdout or ""
         typer.secho("💾 Captured git diff output.", fg=typer.colors.CYAN)
     except Exception as exc:
@@ -1323,7 +1346,9 @@ def gdn(branch: Optional[str] = typer.Argument(None, help="Branch to compare aga
 
     # Write to a temporary file and open in editor
     current_branch = _get_git_branch()
-    filename = f"gdn-{b}-{current_branch}-{_nowstamp()}.txt"
+    # b_display: use provided branch if present else detect main branch name
+    b_display = branch if branch else (_git_main_branch() or "main")
+    filename = f"gdn-{b_display}-{current_branch}-{_nowstamp()}.txt"
     outdir = _get_output_dir(filename)
     outdir.mkdir(parents=True, exist_ok=True)
     outpath = outdir / filename
