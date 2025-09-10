@@ -288,6 +288,63 @@ def _get_git_branch() -> str:
         branch = "unknown"
     return re.sub(r"[^A-Za-z0-9\-_]", "-", branch)
 
+
+def _build_git_diff_cmd_and_msg(items: List[str]) -> tuple[list[str], str]:
+    """Return a git diff command list and a short info message for the given items.
+
+    Rules mirror the previous `gdiff`/`greview_branch` logic:
+      - 0 items: prefer merge-base..HEAD (fallback to default branch)
+      - 1 item: diff working tree vs that ref (exclude AGENTS.md)
+      - 2 items: diff a vs b (exclude AGENTS.md)
+      - >=3 items: first is commit, rest are files; exclude AGENTS.md unless explicitly requested
+    """
+    def_branch = _git_main_branch() or "main"
+
+    if len(items) == 1:
+        msg = f"🔍 Comparing working tree with: {items[0]} (excluding AGENTS.md)"
+        cmd = ["git", "diff", items[0], "--", ".", ":(exclude)AGENTS.md"]
+    elif len(items) == 2:
+        msg = f"🔍 Comparing: {items[0]} ↔ {items[1]} (excluding AGENTS.md)"
+        cmd = ["git", "diff", items[0], items[1], "--", ".", ":(exclude)AGENTS.md"]
+    elif len(items) >= 3:
+        commit = items[0]
+        files = items[1:]
+        if "AGENTS.md" not in files:
+            msg = f"🔍 Comparing: {commit} with specific files: {' '.join(files)} (excluding AGENTS.md)"
+            cmd = ["git", "diff", commit, "--", *files, ":(exclude)AGENTS.md"]
+        else:
+            msg = f"🔍 Comparing: {commit} with specific files: {' '.join(files)}"
+            cmd = ["git", "diff", commit, "--", *files]
+    else:
+        # no args: prefer merge-base..HEAD
+        try:
+            mb_proc = _run(["git", "merge-base", "HEAD", def_branch], check=False)
+            mb = (mb_proc.stdout or "").strip()
+        except Exception:
+            mb = ""
+
+        if mb:
+            msg = f"🔍 No arguments provided. Comparing merge-base {mb}..HEAD (excluding AGENTS.md)"
+            cmd = ["git", "diff", f"{mb}..HEAD", "--", ".", ":(exclude)AGENTS.md"]
+        else:
+            msg = f"🔍 No arguments provided. Comparing against default branch: {def_branch} (excluding AGENTS.md)"
+            cmd = ["git", "diff", def_branch, "--", ".", ":(exclude)AGENTS.md"]
+
+    return cmd, msg
+
+
+def _git_diff_text(items: List[str]) -> str:
+    """Run git diff for given items and return stdout text (empty on error).
+
+    This wraps _build_git_diff_cmd_and_msg and _run.
+    """
+    cmd, _ = _build_git_diff_cmd_and_msg(items)
+    try:
+        proc = _run(cmd, check=False)
+        return proc.stdout or ""
+    except Exception:
+        return ""
+
 # -------------------------
 # Commands
 # -------------------------
@@ -1334,22 +1391,11 @@ def greview_branch() -> None:
     # Step 1: Get diff vs main (excluding AGENTS.md) and copy to clipboard
     typer.secho("🔍 Getting diff vs main (excluding AGENTS.md)...", fg=typer.colors.CYAN)
     try:
-        main_branch = _git_main_branch() or "main"
-        # Prefer diff from merge-base to HEAD so we only see branch changes
-        try:
-            mb_proc = _run(["git", "merge-base", "HEAD", main_branch], check=False)
-            mb = (mb_proc.stdout or "").strip()
-        except Exception:
-            mb = ""
-
-        if mb:
-            typer.secho(f"🔍 Comparing merge-base {mb}..HEAD (excluding AGENTS.md)...", fg=typer.colors.CYAN)
-            diff_proc = _run(["git", "diff", f"{mb}..HEAD", "--", ".", ":(exclude)AGENTS.md"])
-        else:
-            typer.secho(f"🔍 No merge-base found; falling back to diff vs {main_branch} (excluding AGENTS.md)...", fg=typer.colors.CYAN)
-            diff_proc = _run(["git", "diff", main_branch, "--", ".", ":(exclude)AGENTS.md"])
-
-        diff_text = diff_proc.stdout or ""
+        items: List[str] = []
+        cmd, msg = _build_git_diff_cmd_and_msg(items)
+        typer.secho("🔍 Getting diff for review...", fg=typer.colors.CYAN)
+        typer.secho(msg, fg=typer.colors.CYAN)
+        diff_text = _git_diff_text(items)
         
         # Copy to clipboard on macOS
         if sys.platform == "darwin" and _which("pbcopy"):
@@ -2200,39 +2246,18 @@ def gfcommit() -> None:
         raise typer.Exit(0)
 
     # Parse second column (filename) from porcelain output; handle renamed entries
-    files = []
-    for line in out.splitlines():
-        # porcelain format: XY <file> or 'R100 from -> to'
-        parts = line.split()
-        if len(parts) >= 2:
-            # For rename, last token is destination
-            if '->' in line:
-                # take last token
-                fname = parts[-1]
-            else:
-                fname = parts[1]
-            files.append(fname)
+    items = args or []
 
-    for f in files:
-        typer.echo(f"📄 Processing: {f}")
-        try:
-            gfilecommit(f)
-        except SystemExit as se:
-            # gfilecommit uses raise typer.Exit; mimic shell behavior and continue
-            typer.secho(f"⚠️ Skipped {f} due to error", fg=typer.colors.YELLOW)
-            continue
-        except Exception:
-            typer.secho(f"⚠️ Skipped {f} due to error", fg=typer.colors.YELLOW)
-            continue
+    # Build command and run
+    cmd, msg = _build_git_diff_cmd_and_msg(items)
+    typer.secho(msg, fg=typer.colors.CYAN)
 
-    typer.secho("✅ Done! All files processed.", fg=typer.colors.GREEN)
-
-
-@app.command(help="Split last commit into individual file commits (gsplit)")
-def gsplit() -> None:
-    """Reset last commit (soft), unstage files, then run `gfcommit` to commit files individually.
-
-    Mirrors the shell `gsplit` helper. This rewrites history: use with care.
+    try:
+        proc = _run(cmd, check=False)
+        diff_text = proc.stdout or ""
+    except Exception:
+        typer.secho("❌ git diff failed or not a repository.", fg=typer.colors.RED)
+        raise typer.Exit(1)
     """
     typer.secho("🧨 Splitting last commit into individual file commits with AI-powered messages...", fg=typer.colors.CYAN)
 
