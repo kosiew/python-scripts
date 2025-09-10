@@ -1335,8 +1335,20 @@ def greview_branch() -> None:
     typer.secho("🔍 Getting diff vs main (excluding AGENTS.md)...", fg=typer.colors.CYAN)
     try:
         main_branch = _git_main_branch() or "main"
-        # Use git diff with path exclusion to exclude AGENTS.md
-        diff_proc = _run(["git", "diff", main_branch, "--", ".", ":(exclude)AGENTS.md"])
+        # Prefer diff from merge-base to HEAD so we only see branch changes
+        try:
+            mb_proc = _run(["git", "merge-base", "HEAD", main_branch], check=False)
+            mb = (mb_proc.stdout or "").strip()
+        except Exception:
+            mb = ""
+
+        if mb:
+            typer.secho(f"🔍 Comparing merge-base {mb}..HEAD (excluding AGENTS.md)...", fg=typer.colors.CYAN)
+            diff_proc = _run(["git", "diff", f"{mb}..HEAD", "--", ".", ":(exclude)AGENTS.md"])
+        else:
+            typer.secho(f"🔍 No merge-base found; falling back to diff vs {main_branch} (excluding AGENTS.md)...", fg=typer.colors.CYAN)
+            diff_proc = _run(["git", "diff", main_branch, "--", ".", ":(exclude)AGENTS.md"])
+
         diff_text = diff_proc.stdout or ""
         
         # Copy to clipboard on macOS
