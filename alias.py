@@ -2082,6 +2082,9 @@ def grevdiff() -> None:
         raise typer.Exit(1)
 
     rev_path = Path.cwd() / "rev.patch"
+    
+    if not content.endswith("\n"):
+        content += "\n"
     try:
         rev_path.write_text(content, encoding="utf-8")
     except Exception:
