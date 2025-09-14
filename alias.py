@@ -12,7 +12,7 @@ from typing import Optional, List, Callable
 
 import typer
 
-ICTRIAGE_MD = "ictriage02.md"
+ICTRIAGE_MD = "ictriage03.md"
 ICASK_MD = "icask02.md"
 
 app = typer.Typer(
