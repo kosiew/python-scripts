@@ -2467,7 +2467,7 @@ def chezcrypt_cmd(dry_run: bool = typer.Option(False, "--dry-run", help="Show wh
                  targets: list[str] = typer.Argument(..., help="One or more target directories to encrypt")) -> None:
     """Encrypt all files in the given directories using `chezmoi add --encrypt`.
 
-    For each provided directory, runs `find <dir> -type f -exec chezmoi add --encrypt {} \;`.
+    For each provided directory, runs `find <dir> -type f -exec chezmoi add --encrypt {}`.
     
     Note: the sequence "\\;" contains a backslash. Keep this as a literal
     backslash+semicolon in the docstring to match the shell `find -exec` syntax.
