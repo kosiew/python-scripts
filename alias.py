@@ -469,10 +469,14 @@ def gprhash(pr: str = typer.Argument(..., help="PR number, e.g. 43197")):
 
 @app.command(help="Print all commit messages between two commits (inclusive of range)")
 def commits_between(
-    commit1: str = typer.Argument(..., help="First commit ref (hash, branch, tag)"),
-    commit2: str = typer.Argument(..., help="Second commit ref (hash, branch, tag)"),
+    commit1: Optional[str] = typer.Argument(None, help="First commit ref (hash, branch, tag). If not provided, uses merge-base with main branch."),
+    commit2: Optional[str] = typer.Argument(None, help="Second commit ref (hash, branch, tag). Defaults to HEAD if not provided."),
 ):
     """Print commit messages between commit1 and commit2.
+
+    If commit2 is not specified, defaults to HEAD.
+    If neither commit1 nor commit2 are specified, obtains the commit range 
+    using the same logic as gdiff (without arguments) - from merge-base with main branch to HEAD.
 
     Tries the range `commit1..commit2` first. If that yields no results (or errors),
     it will try the reverse `commit2..commit1` so the command is forgiving about
@@ -485,6 +489,30 @@ def commits_between(
             return [l for l in out.splitlines() if l.strip()]
         except Exception:
             return []
+
+    # Handle optional parameters
+    if commit1 is None and commit2 is None:
+        # Use same logic as gdiff without arguments - get range from merge-base to HEAD
+        def_branch = _git_main_branch() or "main"
+        try:
+            mb_proc = _run(["git", "merge-base", "HEAD", def_branch], check=False)
+            mb = (mb_proc.stdout or "").strip()
+            if mb:
+                commit1 = mb
+                commit2 = "HEAD"
+                typer.secho(f"🔍 Using merge-base range: {commit1}..{commit2}", fg=typer.colors.CYAN)
+            else:
+                commit1 = def_branch
+                commit2 = "HEAD"
+                typer.secho(f"🔍 No merge-base found. Using: {commit1}..{commit2}", fg=typer.colors.CYAN)
+        except Exception:
+            commit1 = def_branch
+            commit2 = "HEAD"
+            typer.secho(f"🔍 Failed to compute merge-base. Using: {commit1}..{commit2}", fg=typer.colors.CYAN)
+    elif commit2 is None:
+        # Default commit2 to HEAD if not specified
+        commit2 = "HEAD"
+        typer.secho(f"🔍 Using range: {commit1}..{commit2}", fg=typer.colors.CYAN)
 
     # try commit1..commit2 first
     rng = f"{commit1}..{commit2}"
