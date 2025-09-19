@@ -14,6 +14,7 @@ import typer
 
 ICTRIAGE_MD = "ictriage03.md"
 ICASK_MD = "icask02.md"
+SHORT_HASH_LENGTH = 7
 
 app = typer.Typer(
     name="alias-cli",
@@ -467,12 +468,12 @@ def gprhash(pr: str = typer.Argument(..., help="PR number, e.g. 43197")):
         typer.echo(line.split()[0])
 
 
-@app.command(help="Print all commit messages between two commits (inclusive of range)")
+@app.command(help="Print all commit messages between two commits (inclusive of range), excluding merge commits")
 def commits_between(
     commit1: Optional[str] = typer.Argument(None, help="First commit ref (hash, branch, tag). If not provided, uses merge-base with main branch."),
     commit2: Optional[str] = typer.Argument(None, help="Second commit ref (hash, branch, tag). Defaults to HEAD if not provided."),
 ):
-    """Print commit messages between commit1 and commit2.
+    """Print commit messages between commit1 and commit2, excluding merge commits.
 
     If commit2 is not specified, defaults to HEAD.
     If neither commit1 nor commit2 are specified, obtains the commit range 
@@ -481,10 +482,12 @@ def commits_between(
     Tries the range `commit1..commit2` first. If that yields no results (or errors),
     it will try the reverse `commit2..commit1` so the command is forgiving about
     the order of arguments.
+
+    Merge commits are automatically excluded from the output.
     """
     def _run_log(rng: str) -> List[str]:
         try:
-            proc = _run(["git", "log", "--pretty=format:%s", rng], check=False)
+            proc = _run(["git", "log", "--no-merges", "--pretty=format:%s", rng], check=False)
             out = (proc.stdout or "").strip()
             return [l for l in out.splitlines() if l.strip()]
         except Exception:
@@ -539,6 +542,84 @@ def commits_between(
             typer.secho("⚠️ Failed to copy to clipboard.", fg=typer.colors.YELLOW)
     else:
         typer.echo("📋 Commit messages:\n" + all_messages)
+
+
+@app.command(help=f"Print short commit hashes ({SHORT_HASH_LENGTH} chars) between two commits (inclusive of range), excluding merge commits")
+def hashes_between(
+    commit1: Optional[str] = typer.Argument(None, help="First commit ref (hash, branch, tag). If not provided, uses merge-base with main branch."),
+    commit2: Optional[str] = typer.Argument(None, help="Second commit ref (hash, branch, tag). Defaults to HEAD if not provided."),
+):
+    """Print short commit hashes between commit1 and commit2, excluding merge commits.
+
+    If commit2 is not specified, defaults to HEAD.
+    If neither commit1 nor commit2 are specified, obtains the commit range 
+    using the same logic as gdiff (without arguments) - from merge-base with main branch to HEAD.
+
+    Tries the range `commit1..commit2` first. If that yields no results (or errors),
+    it will try the reverse `commit2..commit1` so the command is forgiving about
+    the order of arguments.
+
+    Merge commits are automatically excluded from the output.
+    Returns short hashes (first {SHORT_HASH_LENGTH} characters) for better readability.
+    """
+    def _run_log_hashes(rng: str) -> List[str]:
+        try:
+            proc = _run(["git", "log", "--no-merges", "--pretty=format:%H", rng], check=False)
+            out = (proc.stdout or "").strip()
+            # Truncate each hash to SHORT_HASH_LENGTH characters
+            return [l[:SHORT_HASH_LENGTH] for l in out.splitlines() if l.strip()]
+        except Exception:
+            return []
+
+    # Handle optional parameters
+    if commit1 is None and commit2 is None:
+        # Use same logic as gdiff without arguments - get range from merge-base to HEAD
+        def_branch = _git_main_branch() or "main"
+        try:
+            mb_proc = _run(["git", "merge-base", "HEAD", def_branch], check=False)
+            mb = (mb_proc.stdout or "").strip()
+            if mb:
+                commit1 = mb
+                commit2 = "HEAD"
+                typer.secho(f"🔍 Using merge-base range: {commit1}..{commit2}", fg=typer.colors.CYAN)
+            else:
+                commit1 = def_branch
+                commit2 = "HEAD"
+                typer.secho(f"🔍 No merge-base found. Using: {commit1}..{commit2}", fg=typer.colors.CYAN)
+        except Exception:
+            commit1 = def_branch
+            commit2 = "HEAD"
+            typer.secho(f"🔍 Failed to compute merge-base. Using: {commit1}..{commit2}", fg=typer.colors.CYAN)
+    elif commit2 is None:
+        # Default commit2 to HEAD if not specified
+        commit2 = "HEAD"
+        typer.secho(f"🔍 Using range: {commit1}..{commit2}", fg=typer.colors.CYAN)
+
+    # try commit1..commit2 first
+    rng = f"{commit1}..{commit2}"
+    hashes = _run_log_hashes(rng)
+    if not hashes:
+        # try reverse range
+        rng = f"{commit2}..{commit1}"
+        hashes = _run_log_hashes(rng)
+
+    if not hashes:
+        typer.secho("No commits found between the supplied refs or not a git repository.", fg=typer.colors.YELLOW)
+        raise typer.Exit(0)
+
+    for hash_val in hashes:
+        typer.echo(hash_val)
+    # Return all hashes as a single joined string (for programmatic use)
+    all_hashes = "\n".join(hashes)
+    if sys.platform == "darwin" and _which("pbcopy"):
+        try:
+            p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
+            p.communicate(all_hashes.encode())
+            typer.secho("📋 Commit hashes copied to clipboard!", fg=typer.colors.GREEN)
+        except Exception:
+            typer.secho("⚠️ Failed to copy to clipboard.", fg=typer.colors.YELLOW)
+    else:
+        typer.echo("📋 Commit hashes:\n" + all_hashes)
 
 
 @app.command(help="Squash commits between two refs (inclusive) into a single commit with a summarized message")

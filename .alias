@@ -946,6 +946,11 @@ commits_between() {
   run_alias_py commits-between "$@"
 }
 
+
+hashes_between() {
+  run_alias_py hashes-between "$@"
+}
+
 vmake() {
   run_alias_py vmake "$@"
 }
