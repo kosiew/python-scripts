@@ -2477,7 +2477,16 @@ def gadded(branch: str = typer.Argument(..., help="Branch to compare against")) 
     _open_in_editor(outpath)
 
 
-@app.command(help="Rebase a range and add Signed-off-by to each commit (gsign)")
+@app.command(help="""Rebase commits onto upstream branch with Signed-off-by signatures.
+
+WHAT 'gsign main' DOES: Takes all commits from your current branch that are NOT in 'main', rebases them onto main's tip, and adds 'Signed-off-by' to each commit.
+
+UPSTREAM BRANCH: The base branch you want to rebase onto (e.g., 'main', 'develop'). Git finds commits in your branch but NOT in upstream, then replays them on top.
+
+EXAMPLES: 
+  gsign main → Rebase current branch onto main with signatures
+  gsign main..HEAD → Same as above (explicit range)  
+  gsign upstream/main --autosquash → Rebase onto upstream/main with auto-squashing""")
 def gsign(
     upstream_or_range: str = typer.Argument(..., help="Upstream branch or range (e.g. 'main' or 'main..HEAD' or 'abc123..def456')"),
     autosquash: bool = typer.Option(False, "--autosquash", help="Pass --autosquash to git rebase to automatically fixup/squash commits marked with fixup!/squash!"),
