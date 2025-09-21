@@ -14,7 +14,7 @@ import typer
 
 ICTRIAGE_MD = "ictriage03.md"
 ICASK_MD = "icask02.md"
-SHORT_HASH_LENGTH = 7
+SHORT_HASH_LENGTH = 9
 
 app = typer.Typer(
     name="alias-cli",
@@ -121,6 +121,7 @@ def find_and_remove_old_files(rel_dir: str, *, days: int = 30, pattern: Optional
     Returns:
         Number of files removed (int)
     """
+    
     import time
     import re
 
