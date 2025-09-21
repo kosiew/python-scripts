@@ -2478,38 +2478,52 @@ def gadded(branch: str = typer.Argument(..., help="Branch to compare against")) 
 
 
 @app.command(help="Rebase a range and add Signed-off-by to each commit (gsign)")
-def gsign(args: List[str] = typer.Argument(None, help="Range or upstream and optional flags")) -> None:
-    """Run `git rebase --signoff [--autosquash] [--rebase-merges] <upstream> <branch>`.
+def gsign(
+    upstream_or_range: str = typer.Argument(..., help="Upstream branch or range (e.g. 'main' or 'main..HEAD' or 'abc123..def456')"),
+    autosquash: bool = typer.Option(False, "--autosquash", help="Pass --autosquash to git rebase to automatically fixup/squash commits marked with fixup!/squash!"),
+    rebase_merges: bool = typer.Option(False, "--rebase-merges", help="Pass --rebase-merges to preserve merge commits during the rebase"),
+) -> None:
+    """Rebase commits with Signed-off-by and add missing signatures.
 
-    Usage examples (same as shell):
-      gsign main
-      gsign main..HEAD
-      gsign abc123..def456 --autosquash --rebase-merges
+    WHAT DOES 'gsign main' DO?
+    ==========================
+    Running 'gsign main' will:
+    1. Take all commits from your current branch that are NOT in 'main'
+    2. Rebase them onto the tip of 'main' 
+    3. Add 'Signed-off-by: Your Name <your@email.com>' to each commit message
+    4. This effectively replays your commits on top of main with signatures
+
+    WHAT IS AN UPSTREAM BRANCH?
+    ===========================
+    An "upstream" branch is the base branch you want to rebase onto. It's typically:
+    - 'main' or 'master': The main development branch
+    - 'develop': A development integration branch
+    - Any other branch you want to base your work on
+
+    When you specify 'main' as upstream, git finds all commits that are in your
+    current branch but NOT in main, then replays them on top of main's latest commit.
+
+    EXAMPLES:
+    =========
+    gsign main
+        → Rebase current branch onto 'main', add signatures to all commits
+        → Equivalent to: git rebase --signoff main
+
+    gsign main..HEAD
+        → Same as above (explicitly specifying the range)
+
+    gsign feature-branch..my-branch --autosquash
+        → Rebase commits from feature-branch to my-branch, with auto-squashing
+
+    gsign upstream/main --rebase-merges
+        → Rebase onto upstream/main, preserving any merge commits
+
+    REQUIREMENTS:
+    =============
+    - Must be in a git repository
+    - Working tree and index must be clean (no uncommitted changes)
+    - No rebase already in progress
     """
-    autosquash_flag = ""
-    rebase_merges_flag = ""
-    arg = ""
-
-    # normalize args list
-    items = args or []
-    for a in items:
-        if a == "--autosquash":
-            autosquash_flag = "--autosquash"
-        elif a == "--rebase-merges":
-            rebase_merges_flag = "--rebase-merges"
-        elif a.startswith("-"):
-            typer.secho(f"⚠️ Unknown option: {a}", fg=typer.colors.YELLOW)
-            raise typer.Exit(2)
-        else:
-            if not arg:
-                arg = a
-            else:
-                typer.secho("Usage: gsign <upstream|range> [--autosquash] [--rebase-merges]", fg=typer.colors.RED)
-                raise typer.Exit(2)
-
-    if not arg:
-        typer.secho("Usage: gsign <upstream|range> [--autosquash] [--rebase-merges]", fg=typer.colors.RED)
-        raise typer.Exit(2)
 
     # Ensure we're in a git repo
     if _run(["git", "rev-parse", "--git-dir"], check=False).returncode != 0:
@@ -2532,15 +2546,15 @@ def gsign(args: List[str] = typer.Argument(None, help="Range or upstream and opt
         typer.secho("❌ Working tree or index not clean. Commit or stash changes first.", fg=typer.colors.RED)
         raise typer.Exit(1)
 
-    # Determine upstream and branch from arg
+    # Determine upstream and branch from input
     upstream = ""
     branch = ""
-    if ".." in arg:
-        upstream, branch = arg.split("..", 1)
+    if ".." in upstream_or_range:
+        upstream, branch = upstream_or_range.split("..", 1)
         if not branch:
             branch = "HEAD"
     else:
-        upstream = arg
+        upstream = upstream_or_range
         branch = "HEAD"
 
     try:
@@ -2548,15 +2562,15 @@ def gsign(args: List[str] = typer.Argument(None, help="Range or upstream and opt
     except Exception:
         cur_branch = "HEAD"
 
-    typer.secho(f"🔧 Rebase {branch} onto {upstream} with --signoff {('and --autosquash' if autosquash_flag else '')}{(' and --rebase-merges' if rebase_merges_flag else '')}...", fg=typer.colors.CYAN)
+    typer.secho(f"🔧 Rebase {branch} onto {upstream} with --signoff {('and --autosquash' if autosquash else '')}{(' and --rebase-merges' if rebase_merges else '')}...", fg=typer.colors.CYAN)
     typer.secho(f"   Current branch: {cur_branch}", fg=typer.colors.CYAN)
 
     # Build command
     cmd = ["git", "rebase", "--signoff"]
-    if autosquash_flag:
-        cmd.append(autosquash_flag)
-    if rebase_merges_flag:
-        cmd.append(rebase_merges_flag)
+    if autosquash:
+        cmd.append("--autosquash")
+    if rebase_merges:
+        cmd.append("--rebase-merges")
     
     # Add upstream
     cmd.append(upstream)
