@@ -650,13 +650,14 @@ alias rgrs="rg -g '*.rs' -g '*.py'"
 # ====================
 # 🧪 Python Utilities
 # ====================
-alias td="python3 $PYTHON_SOURCE/todo/todo.py "
-alias bw="python3 $PYTHON_SOURCE/bv_wordpress.py "
-alias ba="python3 $PYTHON_SOURCE/bv_automattic.py "
-alias pulse="python3 $PYTHON_SOURCE/bv_speedtest.py pulse"
-alias pytest3="python3 -m pytest"
-alias open_urls="python3 $PYTHON_SOURCE/open_urls.py "
-alias say="python3 say.py say " 
+export PYTHON_SOURCE_BIN="$PYTHON_SOURCE/.venv/bin"
+alias td="$PYTHON_SOURCE_BIN/python $PYTHON_SOURCE/todo/todo.py "
+alias bw="$PYTHON_SOURCE_BIN/python $PYTHON_SOURCE/bv_wordpress.py "
+alias ba="$PYTHON_SOURCE_BIN/python $PYTHON_SOURCE/bv_automattic.py "
+alias pulse="$PYTHON_SOURCE_BIN/python $PYTHON_SOURCE/bv_speedtest.py pulse"
+alias open_urls="$PYTHON_SOURCE_BIN/python  $PYTHON_SOURCE/open_urls.py "
+alias say="$PYTHON_SOURCE_BIN/python $PYTHON_SOURCE/say.py say " 
+
 
 # ====================
 # 🐘 Postgres
