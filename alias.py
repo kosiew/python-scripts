@@ -931,9 +931,12 @@ def gnb(branch: str = typer.Argument(..., help="New branch name")) -> None:
     # Checkout AGENTS.md from dev, add and commit
     typer.secho("📥 Attempting to checkout AGENTS.md from 'dev' (if present)...", fg=typer.colors.CYAN)
     try:
+        _run(["git", "commit", "--allow-empty", "-m", "UNPICK START"])
+        typer.secho("📄 UNPICK START", fg=typer.colors.GREEN)
         _run(["git", "checkout", "dev", "--", "AGENTS.md"]) 
         typer.secho("📄 AGENTS.md checked out from 'dev'", fg=typer.colors.GREEN)
         try:
+            # Add empty commit with "UNPICK START" message before the AGENTS.md commit
             _run(["git", "add", "AGENTS.md"])
             _run(["git", "commit", "-m", "UNPICK added AGENTS.md"])
             typer.secho("✅ AGENTS.md added and committed.", fg=typer.colors.GREEN)
