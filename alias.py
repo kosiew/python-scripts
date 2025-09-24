@@ -12,8 +12,8 @@ from typing import Optional, List, Callable
 
 import typer
 
-ICTRIAGE_MD = "ictriage03.md"
-ICASK_MD = "icask02.md"
+ICTRIAGE_MD = "ictriage04.md"
+ICASK_MD = "icask04.md"
 SHORT_HASH_LENGTH = 9
 
 app = typer.Typer(
