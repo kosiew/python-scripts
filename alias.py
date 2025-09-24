@@ -14,6 +14,7 @@ import typer
 
 ICTRIAGE_MD = "ictriage04.md"
 ICASK_MD = "icask04.md"
+IDEEP_MD = "icdeep02.md"
 SHORT_HASH_LENGTH = 9
 
 app = typer.Typer(
@@ -2964,7 +2965,7 @@ def ideep(
     url: str = typer.Argument(..., help="GitHub issue/PR URL"),
     no_open: bool = typer.Option(False, "--no-open", help="Do not open the file in $EDITOR"),
     editor: Optional[str] = typer.Option(None, "--editor", "-e", help="Editor to open file"),
-    local_md: str = typer.Option("ideep.md", "--local-md", help="Local template filename next to alias.py"),
+    local_md: str = typer.Option(IDEEP_MD, "--local-md", help="Local template filename next to alias.py"),
 ):
     """
     Deep analysis of a GitHub issue from a senior developer perspective.
