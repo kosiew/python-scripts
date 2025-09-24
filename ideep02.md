@@ -12,7 +12,6 @@ ${summary}
 
 ---
 
-Role: Senior open-source contributor and software engineer  
 Task: Analyze the GitHub issue. Provide:
 
 - Investigation strategy  

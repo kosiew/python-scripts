@@ -1,4 +1,3 @@
-Role: Senior open-source contributor and software engineer  
 Task: Triage a GitHub issue and associated codebase.
 
 ## Input: Issue Description

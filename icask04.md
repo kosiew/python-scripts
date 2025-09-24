@@ -1,4 +1,3 @@
-Role: Senior open-source contributor and software engineer  
 Task: Given a GitHub issue and the associated codebase, produce a strategic and actionable task plan.
 
 ## Input: Issue Description  
