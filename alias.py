@@ -1116,7 +1116,8 @@ def ctest(
         return
 
     branch_clean = _get_git_branch()
-    filename = f"ctest-{branch_clean}-{_nowstamp()}.txt"
+    args_string = "_".join(re.sub(r"[^A-Za-z0-9]+", "-", arg.replace(" ", "_")) for arg in (items + extra))[:40]
+    filename = f"ctest-{branch_clean}_{args_string}_{_nowstamp()}.txt"
     outdir = _get_output_dir(filename)
     outdir.mkdir(parents=True, exist_ok=True)
     outpath = outdir / filename
