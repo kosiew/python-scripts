@@ -299,6 +299,9 @@ alias gco="git checkout \"\$(git branch | sed 's/^..//' | fzf)\""
 # g sync main
 # alias gsm="git checkout main && gsync && g cob"
 
+alias gcphash="gcopyhash"
+alias gcpbranch="gcopybranch"
+
 gsm() {
   run_alias_py gsm "$@"
 }
