@@ -2003,16 +2003,9 @@ def reviewpr(pr_number: str = typer.Argument(..., help="PR number, e.g. 43197"))
     # Use the shared helper to load and fill template; do not call gcopyhash here.
     filled = _load_and_fill_template("reviewpr", pr_number, copy_hash=False)
 
-    # Copy filled content to clipboard on macOS if available, otherwise print
-    if sys.platform == "darwin" and _which("pbcopy"):
-        try:
-            pproc = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
-            pproc.communicate(filled.encode())
-            typer.secho(f"📋 reviewpr content copied to clipboard for PR {pr_number}", fg=typer.colors.GREEN)
-            return
-        except Exception:
-            typer.secho("⚠️ Failed to copy to clipboard; printing output instead.", fg=typer.colors.YELLOW)
-
+    # Try to copy to clipboard using shared helper; fallback to printing
+    if _copy_text_to_clipboard(filled, label="reviewpr content", pr_number=pr_number):
+        return
     typer.echo(filled)
 
 
@@ -2053,22 +2046,35 @@ def _load_and_fill_template(prefix: str, pr_number: str, copy_hash: bool = False
     return filled
 
 
+def _copy_text_to_clipboard(text: str, label: str = "content", pr_number: Optional[str] = None) -> bool:
+    """Copy text to macOS clipboard using pbcopy. Returns True if copied.
+
+    label is used for user-friendly messages (e.g., 'prwhy content').
+    pr_number, if provided, is shown in the success message.
+    """
+    if sys.platform == "darwin" and _which("pbcopy"):
+        try:
+            pproc = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
+            pproc.communicate(text.encode())
+            if pr_number:
+                typer.secho(f"📋 {label} content copied to clipboard for PR {pr_number}", fg=typer.colors.GREEN)
+            else:
+                typer.secho(f"📋 {label} content copied to clipboard", fg=typer.colors.GREEN)
+            return True
+        except Exception:
+            typer.secho("⚠️ Failed to copy to clipboard; printing output instead.", fg=typer.colors.YELLOW)
+    return False
+
+
 @app.command(help="Load ~/tmp/prwhy-<pr-number>.md, replace {hash} with short HEAD hash, call gcopyhash(), and copy to clipboard")
 def prwhy(pr_number: str = typer.Argument(..., help="PR number, e.g. 43197")) -> None:
     """Load prwhy file, substitute {hash}, call gcopyhash to copy the short hash,
     and copy the filled content to clipboard (or print)."""
     filled = _load_and_fill_template("prwhy", pr_number, copy_hash=True)
 
-    # Copy filled content to clipboard on macOS if available, otherwise print
-    if sys.platform == "darwin" and _which("pbcopy"):
-        try:
-            pproc = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
-            pproc.communicate(filled.encode())
-            typer.secho(f"📋 prwhy content copied to clipboard for PR {pr_number}", fg=typer.colors.GREEN)
-            return
-        except Exception:
-            typer.secho("⚠️ Failed to copy to clipboard; printing output instead.", fg=typer.colors.YELLOW)
-
+    # Try to copy to clipboard using shared helper; fallback to printing
+    if _copy_text_to_clipboard(filled, label="prwhy content", pr_number=pr_number):
+        return
     typer.echo(filled)
 
 
@@ -2079,16 +2085,9 @@ def prrespond(pr_number: str = typer.Argument(..., help="PR number, e.g. 43197")
     """
     filled = _load_and_fill_template("prrespond", pr_number, copy_hash=True)
 
-    # Copy filled content to clipboard on macOS if available, otherwise print
-    if sys.platform == "darwin" and _which("pbcopy"):
-        try:
-            pproc = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
-            pproc.communicate(filled.encode())
-            typer.secho(f"📋 prrespond content copied to clipboard for PR {pr_number}", fg=typer.colors.GREEN)
-            return
-        except Exception:
-            typer.secho("⚠️ Failed to copy to clipboard; printing output instead.", fg=typer.colors.YELLOW)
-
+    # Try to copy to clipboard using shared helper; fallback to printing
+    if _copy_text_to_clipboard(filled, label="prrespond content", pr_number=pr_number):
+        return
     typer.echo(filled)
 
 
