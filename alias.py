@@ -2043,6 +2043,61 @@ def reviewpr(pr_number: str = typer.Argument(..., help="PR number, e.g. 43197"))
     typer.echo(filled)
 
 
+@app.command(help="Load ~/tmp/prwhy-<pr-number>.md, replace {hash} with short HEAD hash, call gcopyhash(), and copy to clipboard")
+def prwhy(pr_number: str = typer.Argument(..., help="PR number, e.g. 43197")) -> None:
+    """Read a 'why' file for a PR, substitute {hash} with the short HEAD commit hash,
+    ensure the short hash is also copied to the clipboard via gcopyhash(), and then
+    copy the filled content to the clipboard (or print as fallback).
+    """
+
+    p = Path.home() / "tmp" / f"prwhy-{pr_number}.md"
+    if not p.exists():
+        typer.secho(f"❌ File not found: {p}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    try:
+        text = p.read_text(encoding="utf-8")
+    except Exception as exc:
+        typer.secho(f"❌ Failed to read file {p}: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Obtain short HEAD hash (same method as gcopyhash)
+    try:
+        short_hash = _run(["git", "rev-parse", "--short", "HEAD"]).stdout.strip()
+    except Exception:
+        short_hash = ""
+
+    filled = text.replace("{hash}", short_hash)
+
+    # Also call gcopyhash() to copy the short hash to clipboard for convenience.
+    try:
+        # gcopyhash is a CLI command; call the function directly if available in this module
+        # otherwise fall back to invoking the helper which copies the hash.
+        try:
+            gcopyhash()
+        except Exception:
+            # Last-resort: directly copy the hash to clipboard on macOS
+            if sys.platform == "darwin" and _which("pbcopy") and short_hash:
+                pproc = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
+                pproc.communicate(short_hash.encode())
+    except Exception:
+        # non-fatal; continue to copy filled content
+        pass
+
+    # Copy filled content to clipboard on macOS if available, otherwise print
+    if sys.platform == "darwin" and _which("pbcopy"):
+        try:
+            pproc = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
+            pproc.communicate(filled.encode())
+            typer.secho(f"📋 prwhy content copied to clipboard for PR {pr_number}", fg=typer.colors.GREEN)
+            return
+        except Exception:
+            typer.secho("⚠️ Failed to copy to clipboard; printing output instead.", fg=typer.colors.YELLOW)
+
+    # Fallback: print to stdout
+    typer.echo(filled)
+
+
 @app.command(help="Copy current branch name to clipboard (gcopybranch)")
 def gcopybranch() -> None:
     """Copy the current branch name to macOS clipboard (pbcopy) or print it.
