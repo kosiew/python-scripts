@@ -20,6 +20,8 @@ app = typer.Typer(help="Find files in external drives")
 DEFAULT_BOOK_FOLDERS = [
     '/Volumes/F/Books',
     '/Volumes/H-WD/books',
+    '/Volumes/F/Books2',
+    '/Volumes/H-WD/Books2',
     '/Users/kosiew/Downloads/Movies/books'
 ]
 
