@@ -2072,6 +2072,26 @@ def prwhy(pr_number: str = typer.Argument(..., help="PR number, e.g. 43197")) ->
     typer.echo(filled)
 
 
+@app.command(help="Load ~/tmp/prrespond-<pr-number>.md, replace {hash} with short HEAD hash, call gcopyhash(), and copy to clipboard")
+def prrespond(pr_number: str = typer.Argument(..., help="PR number, e.g. 43197")) -> None:
+    """Load prrespond file, substitute {hash}, call gcopyhash to copy the short hash,
+    and copy the filled content to clipboard (or print).
+    """
+    filled = _load_and_fill_template("prrespond", pr_number, copy_hash=True)
+
+    # Copy filled content to clipboard on macOS if available, otherwise print
+    if sys.platform == "darwin" and _which("pbcopy"):
+        try:
+            pproc = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
+            pproc.communicate(filled.encode())
+            typer.secho(f"📋 prrespond content copied to clipboard for PR {pr_number}", fg=typer.colors.GREEN)
+            return
+        except Exception:
+            typer.secho("⚠️ Failed to copy to clipboard; printing output instead.", fg=typer.colors.YELLOW)
+
+    typer.echo(filled)
+
+
 @app.command(help="Copy current branch name to clipboard (gcopybranch)")
 def gcopybranch() -> None:
     """Copy the current branch name to macOS clipboard (pbcopy) or print it.
