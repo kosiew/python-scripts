@@ -1997,6 +1997,52 @@ def gcopyhash() -> None:
     typer.echo(short_hash)
 
 
+@app.command(help="Load ~/tmp/reviewpr-<pr-number>.md, replace {hash} with short HEAD hash, and copy to clipboard")
+def reviewpr(pr_number: str = typer.Argument(..., help="PR number, e.g. 43197")) -> None:
+    """Read review template for a PR, substitute {hash} with the short HEAD commit hash,
+    and copy the result to the macOS clipboard (pbcopy) or print it.
+
+    Note: the original request asked to use the return value of `gcopyhash()`.
+    `gcopyhash()` is a CLI command that copies the hash to the clipboard or prints it
+    but does not return a value. To obtain the hash for substitution we reuse the
+    same git invocation (`git rev-parse --short HEAD`). This keeps behavior consistent
+    with `gcopyhash()` while producing the string we need to inject.
+    """
+
+    # Build path: ~/tmp/reviewpr-<pr_number>.md
+    p = Path.home() / "tmp" / f"reviewpr-{pr_number}.md"
+    if not p.exists():
+        typer.secho(f"❌ File not found: {p}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    try:
+        text = p.read_text(encoding="utf-8")
+    except Exception as exc:
+        typer.secho(f"❌ Failed to read file {p}: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Obtain short HEAD hash (same as gcopyhash uses)
+    try:
+        short_hash = _run(["git", "rev-parse", "--short", "HEAD"]).stdout.strip()
+    except Exception:
+        short_hash = ""
+
+    filled = text.replace("{hash}", short_hash)
+
+    # Copy to clipboard on macOS if available, otherwise print
+    if sys.platform == "darwin" and _which("pbcopy"):
+        try:
+            pproc = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
+            pproc.communicate(filled.encode())
+            typer.secho(f"📋 reviewpr content copied to clipboard for PR {pr_number}", fg=typer.colors.GREEN)
+            return
+        except Exception:
+            typer.secho("⚠️ Failed to copy to clipboard; printing output instead.", fg=typer.colors.YELLOW)
+
+    # Fallback: print to stdout
+    typer.echo(filled)
+
+
 @app.command(help="Copy current branch name to clipboard (gcopybranch)")
 def gcopybranch() -> None:
     """Copy the current branch name to macOS clipboard (pbcopy) or print it.
