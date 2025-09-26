@@ -1999,37 +1999,11 @@ def gcopyhash() -> None:
 
 @app.command(help="Load ~/tmp/reviewpr-<pr-number>.md, replace {hash} with short HEAD hash, and copy to clipboard")
 def reviewpr(pr_number: str = typer.Argument(..., help="PR number, e.g. 43197")) -> None:
-    """Read review template for a PR, substitute {hash} with the short HEAD commit hash,
-    and copy the result to the macOS clipboard (pbcopy) or print it.
+    """Load reviewpr file, substitute {hash}, and copy to clipboard (or print)."""
+    # Use the shared helper to load and fill template; do not call gcopyhash here.
+    filled = _load_and_fill_template("reviewpr", pr_number, copy_hash=False)
 
-    Note: the original request asked to use the return value of `gcopyhash()`.
-    `gcopyhash()` is a CLI command that copies the hash to the clipboard or prints it
-    but does not return a value. To obtain the hash for substitution we reuse the
-    same git invocation (`git rev-parse --short HEAD`). This keeps behavior consistent
-    with `gcopyhash()` while producing the string we need to inject.
-    """
-
-    # Build path: ~/tmp/reviewpr-<pr_number>.md
-    p = Path.home() / "tmp" / f"reviewpr-{pr_number}.md"
-    if not p.exists():
-        typer.secho(f"❌ File not found: {p}", fg=typer.colors.RED)
-        raise typer.Exit(1)
-
-    try:
-        text = p.read_text(encoding="utf-8")
-    except Exception as exc:
-        typer.secho(f"❌ Failed to read file {p}: {exc}", fg=typer.colors.RED)
-        raise typer.Exit(1)
-
-    # Obtain short HEAD hash (same as gcopyhash uses)
-    try:
-        short_hash = _run(["git", "rev-parse", "--short", "HEAD"]).stdout.strip()
-    except Exception:
-        short_hash = ""
-
-    filled = text.replace("{hash}", short_hash)
-
-    # Copy to clipboard on macOS if available, otherwise print
+    # Copy filled content to clipboard on macOS if available, otherwise print
     if sys.platform == "darwin" and _which("pbcopy"):
         try:
             pproc = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
@@ -2039,18 +2013,17 @@ def reviewpr(pr_number: str = typer.Argument(..., help="PR number, e.g. 43197"))
         except Exception:
             typer.secho("⚠️ Failed to copy to clipboard; printing output instead.", fg=typer.colors.YELLOW)
 
-    # Fallback: print to stdout
     typer.echo(filled)
 
 
-@app.command(help="Load ~/tmp/prwhy-<pr-number>.md, replace {hash} with short HEAD hash, call gcopyhash(), and copy to clipboard")
-def prwhy(pr_number: str = typer.Argument(..., help="PR number, e.g. 43197")) -> None:
-    """Read a 'why' file for a PR, substitute {hash} with the short HEAD commit hash,
-    ensure the short hash is also copied to the clipboard via gcopyhash(), and then
-    copy the filled content to the clipboard (or print as fallback).
-    """
+def _load_and_fill_template(prefix: str, pr_number: str, copy_hash: bool = False) -> str:
+    """Helper to load ~/tmp/<prefix>-<pr_number>.md, replace {hash} with the
+    short HEAD commit hash, optionally copy the short hash to the clipboard
+    (via gcopyhash()), and return the filled text.
 
-    p = Path.home() / "tmp" / f"prwhy-{pr_number}.md"
+    prefix: 'reviewpr' or 'prwhy' etc.
+    """
+    p = Path.home() / "tmp" / f"{prefix}-{pr_number}.md"
     if not p.exists():
         typer.secho(f"❌ File not found: {p}", fg=typer.colors.RED)
         raise typer.Exit(1)
@@ -2061,7 +2034,6 @@ def prwhy(pr_number: str = typer.Argument(..., help="PR number, e.g. 43197")) ->
         typer.secho(f"❌ Failed to read file {p}: {exc}", fg=typer.colors.RED)
         raise typer.Exit(1)
 
-    # Obtain short HEAD hash (same method as gcopyhash)
     try:
         short_hash = _run(["git", "rev-parse", "--short", "HEAD"]).stdout.strip()
     except Exception:
@@ -2069,20 +2041,23 @@ def prwhy(pr_number: str = typer.Argument(..., help="PR number, e.g. 43197")) ->
 
     filled = text.replace("{hash}", short_hash)
 
-    # Also call gcopyhash() to copy the short hash to clipboard for convenience.
-    try:
-        # gcopyhash is a CLI command; call the function directly if available in this module
-        # otherwise fall back to invoking the helper which copies the hash.
+    if copy_hash:
+        # Try to invoke the local function to copy the short hash, fall back to pbcopy
         try:
             gcopyhash()
         except Exception:
-            # Last-resort: directly copy the hash to clipboard on macOS
             if sys.platform == "darwin" and _which("pbcopy") and short_hash:
                 pproc = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
                 pproc.communicate(short_hash.encode())
-    except Exception:
-        # non-fatal; continue to copy filled content
-        pass
+
+    return filled
+
+
+@app.command(help="Load ~/tmp/prwhy-<pr-number>.md, replace {hash} with short HEAD hash, call gcopyhash(), and copy to clipboard")
+def prwhy(pr_number: str = typer.Argument(..., help="PR number, e.g. 43197")) -> None:
+    """Load prwhy file, substitute {hash}, call gcopyhash to copy the short hash,
+    and copy the filled content to clipboard (or print)."""
+    filled = _load_and_fill_template("prwhy", pr_number, copy_hash=True)
 
     # Copy filled content to clipboard on macOS if available, otherwise print
     if sys.platform == "darwin" and _which("pbcopy"):
@@ -2094,7 +2069,6 @@ def prwhy(pr_number: str = typer.Argument(..., help="PR number, e.g. 43197")) ->
         except Exception:
             typer.secho("⚠️ Failed to copy to clipboard; printing output instead.", fg=typer.colors.YELLOW)
 
-    # Fallback: print to stdout
     typer.echo(filled)
 
 
