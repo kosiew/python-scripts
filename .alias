@@ -923,18 +923,38 @@ daily_prefixed_cleaner() {
   run_alias_py daily_prefixed_cleaner
 }
 
+# generate a compressed commit of changes in branch, then reverse the commit
+#    1. Get diff vs main (excluding AGENTS.md) and copy to clipboard
+#    2. Run grevdiff to reverse apply the diff
+#    3. Commit with message "revert branch UNPICK"
+#    4. Revert the last commit
+#    5. Force push with lease
+#    6. Copy commit hash to clipboard
 greview_branch() {
   run_alias_py greview-branch "$@"
 }
 
+# PR review workflow:
+# 1) Pause and wait for confirmation that PR diff has been copied to the clipboard
+# 2) Run gappdiff (applies patch from clipboard)
+# 3) Commit the applied changes with message: "CHANGES to review" using gacommit
+# 4) Push the changes to the remote repository
+# 5) Copy the resulting commit hash to the clipboard for reference
 greview_pr() {
   run_alias_py greview-pr "$@"
 }
 
+# get review pr prompt
+reviewpr() {
+  run_alias_py reviewpr "$@"
+}
+
+# swap last 2 commit messages
 swapmsgs() {
   run_alias_py swapmsgs "$@" 
 }
 
+# run $@ 2>&1 | vi -
 rpipe() {
   run_alias_py rpipe "$@"
 }
@@ -942,19 +962,30 @@ rpipe() {
 alias rmaturin="rpipe maturin develop --uv"
 alias rpytest="rpipe pytest --lf"
 
+# Squash commits from commit1..commit2 (inclusive) into a single commit.
 squash_commits() {
   run_alias_py squash-commits "$@"
 }
 
+#Print commit messages between commit1 and commit2, excluding merge commits.
+#
+#  If commit2 is not specified, defaults to HEAD.
+#  If neither commit1 nor commit2 are specified, obtains the commit range 
+#  using the same logic as gdiff (without arguments) - from merge-base with main branch to HEAD.
 commits_between() {
   run_alias_py commits-between "$@"
 }
 
-
+#Print short commit hashes between commit1 and commit2, excluding merge commits.
+#
+#  If commit2 is not specified, defaults to HEAD.
+#  If neither commit1 nor commit2 are specified, obtains the commit range 
+#  using the same logic as gdiff (without arguments) - from merge-base with main branch to HEAD.
 hashes_between() {
   run_alias_py hashes-between "$@"
 }
 
+# make <target> 2>&1 | python parser.py parse-go-failures | vi -
 vmake() {
   run_alias_py vmake "$@"
 }
