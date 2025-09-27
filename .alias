@@ -934,7 +934,7 @@ greview_branch() {
   run_alias_py greview-branch "$@"
 }
 
-# PR review workflow:
+# External PR review workflow:
 # 1) Pause and wait for confirmation that PR diff has been copied to the clipboard
 # 2) Run gappdiff (applies patch from clipboard)
 # 3) Commit the applied changes with message: "CHANGES to review" using gacommit
@@ -944,17 +944,17 @@ greview_pr() {
   run_alias_py greview-pr "$@"
 }
 
-# get review pr prompt
+# reviewpr <prnumber> - get review pr prompt
 reviewpr() {
   run_alias_py reviewpr "$@"
 }
 
-# get pr why prompt
+# prwhy <prnumber> - get pr why prompt
 prwhy() {
   run_alias_py prwhy "$@"
 }
 
-# get pr respond prompt
+# prrespond <prnumber> - get pr respond prompt
 prrespond() {
   run_alias_py prrespond "$@"
 }
