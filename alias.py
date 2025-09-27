@@ -1624,6 +1624,13 @@ def greview_pr() -> None:
     try:
         gappdiff()
         typer.secho("✅ Patch applied successfully", fg=typer.colors.GREEN)
+    except typer.Exit as exc:
+        # gappdiff uses typer.Exit to signal success/failure
+        if exc.exit_code == 0:
+            typer.secho("✅ Patch applied successfully", fg=typer.colors.GREEN)
+        else:
+            typer.secho(f"❌ Failed to apply patch (exit code {exc.exit_code})", fg=typer.colors.RED)
+            raise typer.Exit(1)
     except Exception as exc:
         typer.secho(f"❌ Failed to apply patch: {exc}", fg=typer.colors.RED)
         raise typer.Exit(1)
@@ -2355,6 +2362,9 @@ def gappdiff(dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Check 
     typer.secho("📋 Patch preview (first 20 lines):", fg=typer.colors.CYAN)
     for ln in patch_text.splitlines()[:20]:
         typer.echo(ln)
+    
+    if dry_run:
+        typer.secho("", fg=typer.colors.WHITE)  # Add spacing
 
     # Use check=False and inspect return codes and stderr to avoid treating
     # 'non-zero but partially applied' states as both success and failure.
@@ -2363,22 +2373,47 @@ def gappdiff(dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Check 
         proc = _run(["git", "apply", "--3way", "--index", "--check", str(patch_path)], check=False)
         if proc.returncode == 0:
             typer.secho("✅ Patch would apply cleanly.", fg=typer.colors.GREEN)
+            # Clean up temporary patch file
+            try:
+                patch_path.unlink()
+            except Exception:
+                pass
             raise typer.Exit(0)
         else:
             # Provide git's stderr for debugging when available
             stderr = (proc.stderr or "").strip()
             typer.secho("❌ Patch check failed.", fg=typer.colors.RED)
+            typer.secho(f"   Return code: {proc.returncode}", fg=typer.colors.RED)
             if stderr:
-                typer.echo(stderr)
-            typer.secho(f"   Try: (cd \"{root}\" && git apply --3way --reject \"{patch_path}\")", fg=typer.colors.YELLOW)
+                typer.secho("   Git stderr:", fg=typer.colors.RED)
+                for line in stderr.splitlines():
+                    typer.secho(f"   {line}", fg=typer.colors.RED)
+            typer.secho(f"   Patch file: {patch_path}", fg=typer.colors.YELLOW)
+            typer.secho(f"   Try manual: (cd \"{root}\" && git apply --3way --reject \"{patch_path}\")", fg=typer.colors.YELLOW)
+            # Keep the patch file for debugging
+            typer.secho(f"   📁 Patch saved to: {patch_path}", fg=typer.colors.CYAN)
             raise typer.Exit(1)
 
+    typer.secho("", fg=typer.colors.WHITE)  # Add spacing
     typer.secho("📥 Applying with --3way…", fg=typer.colors.CYAN)
     proc = _run(["git", "apply", "--3way", "--index", "--verbose", str(patch_path)], check=False)
     # git apply may exit non-zero but still stage changes when using --3way;
     # check for staged changes as the real indicator of success.
     if proc.returncode == 0:
         typer.secho("🎉 Applied. Changes are staged.", fg=typer.colors.GREEN)
+        # Show what was applied
+        stdout = (proc.stdout or "").strip()
+        if stdout:
+            typer.secho("   Applied changes:", fg=typer.colors.GREEN)
+            for line in stdout.splitlines()[:5]:  # Show first 5 lines
+                typer.secho(f"   {line}", fg=typer.colors.GREEN)
+            if len(stdout.splitlines()) > 5:
+                typer.secho("   ... (use 'git status' to see all changes)", fg=typer.colors.GREEN)
+        # Clean up temporary patch file on success
+        try:
+            patch_path.unlink()
+        except Exception:
+            pass
         raise typer.Exit(0)
     else:
         # However, sometimes git apply exits non-zero but has applied hunks and
@@ -2388,13 +2423,53 @@ def gappdiff(dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Check 
         if (cached.stdout or "").strip():
             typer.secho("⚠️ git apply exited non-zero but changes are staged.", fg=typer.colors.YELLOW)
             typer.secho("🎉 Applied. Changes are staged.", fg=typer.colors.GREEN)
+            # Clean up temporary patch file on success
+            try:
+                patch_path.unlink()
+            except Exception:
+                pass
             raise typer.Exit(0)
         # Nothing staged — report failure and show stderr
         stderr = (proc.stderr or "").strip()
+        stdout = (proc.stdout or "").strip()
         typer.secho("❌ Apply failed.", fg=typer.colors.RED)
+        typer.secho(f"   Return code: {proc.returncode}", fg=typer.colors.RED)
+        
         if stderr:
-            typer.echo(stderr)
-        typer.secho(f"   Try: (cd \"{root}\" && git apply --3way --reject \"{patch_path}\")", fg=typer.colors.YELLOW)
+            typer.secho("   Git stderr:", fg=typer.colors.RED)
+            for line in stderr.splitlines():
+                typer.secho(f"   {line}", fg=typer.colors.RED)
+        
+        if stdout:
+            typer.secho("   Git stdout:", fg=typer.colors.RED)
+            for line in stdout.splitlines():
+                typer.secho(f"   {line}", fg=typer.colors.RED)
+        
+        # Show current repo state for debugging
+        try:
+            status_proc = _run(["git", "status", "--porcelain"], check=False)
+            if status_proc.stdout and status_proc.stdout.strip():
+                typer.secho("   Current repo status:", fg=typer.colors.CYAN)
+                for line in status_proc.stdout.strip().splitlines()[:10]:  # Limit to 10 lines
+                    typer.secho(f"   {line}", fg=typer.colors.CYAN)
+                if len(status_proc.stdout.strip().splitlines()) > 10:
+                    typer.secho("   ... (truncated)", fg=typer.colors.CYAN)
+            else:
+                typer.secho("   Repository is clean (no uncommitted changes)", fg=typer.colors.GREEN)
+        except Exception:
+            pass  # Don't fail if we can't get status
+                
+        # Check for common issues and provide helpful suggestions
+        if "does not exist in index" in stderr:
+            typer.secho("   💡 This might be a new file. Try: git add . && git apply --3way", fg=typer.colors.CYAN)
+        elif "patch does not apply" in stderr:
+            typer.secho("   💡 Patch conflicts detected. Check file contents and resolve manually.", fg=typer.colors.CYAN)
+        elif "already exists in working directory" in stderr:
+            typer.secho("   💡 File already exists. Check if changes were already applied.", fg=typer.colors.CYAN)
+            
+        typer.secho(f"   Patch file: {patch_path}", fg=typer.colors.YELLOW)
+        typer.secho(f"   Try manual: (cd \"{root}\" && git apply --3way --reject \"{patch_path}\")", fg=typer.colors.YELLOW)
+        typer.secho(f"   📁 Patch saved to: {patch_path}", fg=typer.colors.CYAN)
         raise typer.Exit(1)
 
 
