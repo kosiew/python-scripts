@@ -1622,7 +1622,7 @@ def greview_pr() -> None:
     # Step 2: Run gappdiff
     typer.secho("📥 Applying patch from clipboard...", fg=typer.colors.CYAN)
     try:
-        _gappdiff_core(dry_run=False)
+        gappdiff(dry_run=False)
         typer.secho("✅ Patch applied successfully", fg=typer.colors.GREEN)
     except typer.Exit as exc:
         # gappdiff uses typer.Exit to signal success/failure
