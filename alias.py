@@ -2308,7 +2308,8 @@ def gappdiff(dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Check 
         raise typer.Exit(1)
 
     # Create timestamped filename and use ~/tmp/tools directory
-    filename = f"gappdiff-{_nowstamp()}.patch"
+    branch_clean = _get_git_branch()
+    filename = f"gappdiff-{branch_clean}-{_nowstamp()}.patch"
     outdir = _get_output_dir(filename)
     outdir.mkdir(parents=True, exist_ok=True)
     patch_path = outdir / filename
