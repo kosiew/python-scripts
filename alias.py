@@ -1635,6 +1635,20 @@ def greview_pr() -> None:
         typer.secho(f"❌ Failed to apply patch: {exc}", fg=typer.colors.RED)
         raise typer.Exit(1)
 
+    # Check if there are actually changes to commit
+    typer.secho("🔍 Checking for changes to commit...", fg=typer.colors.CYAN)
+    try:
+        staged_changes = _run(["git", "diff", "--cached", "--name-only"]).stdout.strip()
+        if not staged_changes:
+            typer.secho("⚠️ No changes to commit. The patch may have already been applied or resulted in no net changes.", fg=typer.colors.YELLOW)
+            typer.secho("✅ Workflow completed (no commit needed).", fg=typer.colors.GREEN)
+            return
+        else:
+            typer.secho(f"✅ Found changes to commit: {len(staged_changes.splitlines())} file(s)", fg=typer.colors.GREEN)
+    except Exception as exc:
+        typer.secho(f"❌ Failed to check staged changes: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
     # Step 3: Commit with gacommit
     typer.secho("📝 Committing changes...", fg=typer.colors.CYAN)
     try:
