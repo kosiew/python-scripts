@@ -110,6 +110,65 @@ def _unwrap_fenced(text: str) -> str:
     return text
 
 
+def _ensure_macos() -> None:
+    """Ensure we're running on macOS, exit with error message if not."""
+    if sys.platform != "darwin":
+        typer.secho("❌ This feature currently supports macOS only.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+
+def _ensure_macos_with_pbpaste() -> None:
+    """Ensure we're running on macOS with pbpaste available."""
+    _ensure_macos()
+    
+    if not _which("pbpaste"):
+        typer.secho("❌ pbpaste not found in PATH.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+
+def _is_macos_with_pbcopy() -> bool:
+    """Check if we're on macOS with pbcopy available."""
+    return sys.platform == "darwin" and _which("pbcopy")
+
+
+def _copy_to_clipboard(text: str, success_msg: str = "📋 Copied to clipboard!", error_msg: str = "⚠️ Failed to copy to clipboard.") -> bool:
+    """Copy text to clipboard on macOS using pbcopy.
+    
+    Args:
+        text: Text to copy to clipboard
+        success_msg: Message to show on successful copy
+        error_msg: Message to show on copy failure
+        
+    Returns:
+        True if successfully copied, False otherwise
+    """
+    if not _is_macos_with_pbcopy():
+        return False
+    
+    try:
+        p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
+        p.communicate(text.encode())
+        if success_msg:
+            typer.secho(success_msg, fg=typer.colors.GREEN)
+        return True
+    except Exception:
+        if error_msg:
+            typer.secho(error_msg, fg=typer.colors.YELLOW)
+        return False
+
+
+def _read_from_clipboard() -> str:
+    """Read text from clipboard using pbpaste.
+    
+    Returns:
+        Clipboard content as string, or empty string if reading fails
+    """
+    try:
+        return _run(["pbpaste"]).stdout or ""
+    except Exception:
+        return ""
+
+
 def find_and_remove_old_files(rel_dir: str, *, days: int = 30, pattern: Optional[str] = None, recurse: bool = True) -> int:
     """Find files under Path.home()/rel_dir matching `pattern` older than `days` and remove them.
 
@@ -417,9 +476,7 @@ def clipboard_to_file(
     no_open: bool = typer.Option(False, "--no-open", help="Do not open the file in $EDITOR"),
     editor: Optional[str] = typer.Option(None, "--editor", "-e", help="Editor to open file"),
 ):
-    if sys.platform != "darwin":
-        typer.secho("❌ Clipboard mode currently supports macOS (pbpaste).", fg=typer.colors.RED)
-        raise typer.Exit(1)
+    _ensure_macos_with_pbpaste()
     if not _which("llm"):
         typer.secho("❌ 'llm' not found in PATH.", fg=typer.colors.RED)
         raise typer.Exit(1)
@@ -427,7 +484,7 @@ def clipboard_to_file(
     # derive short title from clipboard
     short = "note"
     try:
-        clip = _run(["pbpaste"]).stdout
+        clip = _read_from_clipboard()
         gen = _llm(["-s",
                     "Generate a short, kebab-case filename-style title for this GitHub issue. Avoid punctuation. No more than 8 words."],
                    input_text=clip)
@@ -535,14 +592,7 @@ def commits_between(
         typer.echo(msg)
     # Return all messages as a single joined string (for programmatic use)
     all_messages = "\n".join(messages)
-    if sys.platform == "darwin" and _which("pbcopy"):
-        try:
-            p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
-            p.communicate(all_messages.encode())
-            typer.secho("📋 Commit messages copied to clipboard!", fg=typer.colors.GREEN)
-        except Exception:
-            typer.secho("⚠️ Failed to copy to clipboard.", fg=typer.colors.YELLOW)
-    else:
+    if not _copy_to_clipboard(all_messages, "📋 Commit messages copied to clipboard!"):
         typer.echo("📋 Commit messages:\n" + all_messages)
 
 
@@ -613,14 +663,7 @@ def hashes_between(
         typer.echo(hash_val)
     # Return all hashes as a single joined string (for programmatic use)
     all_hashes = "\n".join(hashes)
-    if sys.platform == "darwin" and _which("pbcopy"):
-        try:
-            p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
-            p.communicate(all_hashes.encode())
-            typer.secho("📋 Commit hashes copied to clipboard!", fg=typer.colors.GREEN)
-        except Exception:
-            typer.secho("⚠️ Failed to copy to clipboard.", fg=typer.colors.YELLOW)
-    else:
+    if not _copy_to_clipboard(all_hashes, "📋 Commit hashes copied to clipboard!"):
         typer.echo("📋 Commit hashes:\n" + all_hashes)
 
 
@@ -788,14 +831,7 @@ def gdiff(args: List[str] = typer.Argument(None, help="Arguments forwarded to gi
     outpath.write_text(diff_text, encoding="utf-8")
 
     # Copy to clipboard on macOS if pbcopy present
-    if sys.platform == "darwin" and _which("pbcopy"):
-        try:
-            p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
-            p.communicate(diff_text.encode())
-            typer.secho("📋 Diff output copied to clipboard!", fg=typer.colors.GREEN)
-        except Exception:
-            typer.secho("⚠️ Failed to copy to clipboard.", fg=typer.colors.YELLOW)
-    else:
+    if not _copy_to_clipboard(diff_text, "📋 Diff output copied to clipboard!"):
         typer.echo("📋 Diff output saved to: " + str(outpath))
 
     _open_in_editor(outpath, syntax_on=True)
@@ -1243,20 +1279,11 @@ def encode_and_copy_cmd(
 ):
     """Base64-encode the given text and copy to the macOS clipboard (pbcopy)."""
     import base64
-    import subprocess
-    import sys
 
     encoded = base64.b64encode(text.encode()).decode()
-    if sys.platform == "darwin":
-        try:
-            p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
-            p.communicate(encoded.encode())
-            typer.echo("Encoded message copied to clipboard.")
-        except Exception:
-            typer.echo("Failed to copy to clipboard; printing encoded text:")
-            typer.echo(encoded)
-    else:
-        # Non-macOS fallback: print encoded value
+    if not _copy_to_clipboard(encoded, "Encoded message copied to clipboard.", 
+                             "Failed to copy to clipboard; printing encoded text:"):
+        # Non-macOS fallback or copy failure: print encoded value
         typer.echo(encoded)
 
 
@@ -1539,14 +1566,7 @@ def greview_branch() -> None:
         diff_text = _git_diff_text(items)
         
         # Copy to clipboard on macOS
-        if sys.platform == "darwin" and _which("pbcopy"):
-            try:
-                p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
-                p.communicate(diff_text.encode())
-                typer.secho("📋 Diff (excluding AGENTS.md) copied to clipboard", fg=typer.colors.GREEN)
-            except Exception:
-                typer.secho("⚠️ Failed to copy to clipboard", fg=typer.colors.YELLOW)
-        else:
+        if not _copy_to_clipboard(diff_text, "📋 Diff (excluding AGENTS.md) copied to clipboard"):
             typer.secho("📋 Diff generated (clipboard copy not available)", fg=typer.colors.GREEN)
             
     except Exception as exc:
@@ -2004,18 +2024,10 @@ def gcopyhash() -> None:
         typer.secho("❌ Not a git repo or failed to get HEAD hash.", fg=typer.colors.RED)
         raise typer.Exit(1)
 
-    if sys.platform == "darwin" and _which("pbcopy"):
-        try:
-            typer.echo("📋 Copying short hash to clipboard...")
-            p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
-            p.communicate(short_hash.encode())
-            typer.secho(f"✅ Short commit hash copied to clipboard: {short_hash}", fg=typer.colors.GREEN)
-            return
-        except Exception:
-            typer.secho("⚠️ Failed to copy to clipboard; falling back to printing.", fg=typer.colors.YELLOW)
-
-    # fallback: print to stdout
-    typer.echo(short_hash)
+    if not _copy_to_clipboard(short_hash, f"✅ Short commit hash copied to clipboard: {short_hash}",
+                             "⚠️ Failed to copy to clipboard; falling back to printing."):
+        # fallback: print to stdout
+        typer.echo(short_hash)
 
 
 @app.command(help="Load ~/tmp/reviewpr-<pr-number>.md, replace {hash} with short HEAD hash, and copy to clipboard")
@@ -2049,9 +2061,9 @@ def _load_and_fill_template(prefix: str, pr_number: str, copy_hash: bool = False
             raise typer.Exit(1)
 
         # Try to read from macOS clipboard (pbpaste). Fallback to reading stdin.
-        if sys.platform == "darwin" and _which("pbpaste"):
-            try:
-                text = _run(["pbpaste"]).stdout
+        if _is_macos_with_pbcopy():  # pbcopy implies pbpaste availability 
+            text = _read_from_clipboard()
+            if text:
                 # attempt to persist the clipboard content so subsequent runs find the file
                 try:
                     p.parent.mkdir(parents=True, exist_ok=True)
@@ -2059,7 +2071,7 @@ def _load_and_fill_template(prefix: str, pr_number: str, copy_hash: bool = False
                     typer.secho(f"✅ Saved template to: {p}", fg=typer.colors.GREEN)
                 except Exception:
                     typer.secho("⚠️ Failed to save template to file; continuing with clipboard content.", fg=typer.colors.YELLOW)
-            except Exception:
+            else:
                 typer.secho("⚠️ Failed to read from clipboard; please paste the template below and finish with Ctrl-D.", fg=typer.colors.YELLOW)
                 try:
                     typer.echo("Paste template now, then press Ctrl-D:")
@@ -2097,9 +2109,7 @@ def _load_and_fill_template(prefix: str, pr_number: str, copy_hash: bool = False
         try:
             gcopyhash()
         except Exception:
-            if sys.platform == "darwin" and _which("pbcopy") and short_hash:
-                pproc = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
-                pproc.communicate(short_hash.encode())
+            _copy_to_clipboard(short_hash or "", success_msg="", error_msg="")
 
     return filled
 
@@ -2110,18 +2120,14 @@ def _copy_text_to_clipboard(text: str, label: str = "content", pr_number: Option
     label is used for user-friendly messages (e.g., 'prwhy content').
     pr_number, if provided, is shown in the success message.
     """
-    if sys.platform == "darwin" and _which("pbcopy"):
-        try:
-            pproc = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
-            pproc.communicate(text.encode())
-            if pr_number:
-                typer.secho(f"📋 {label} content copied to clipboard for PR {pr_number}", fg=typer.colors.GREEN)
-            else:
-                typer.secho(f"📋 {label} content copied to clipboard", fg=typer.colors.GREEN)
-            return True
-        except Exception:
-            typer.secho("⚠️ Failed to copy to clipboard; printing output instead.", fg=typer.colors.YELLOW)
-    return False
+    if pr_number:
+        success_msg = f"📋 {label} content copied to clipboard for PR {pr_number}"
+    else:
+        success_msg = f"📋 {label} content copied to clipboard"
+    
+    error_msg = "⚠️ Failed to copy to clipboard; printing output instead."
+    
+    return _copy_to_clipboard(text, success_msg, error_msg)
 
 
 @app.command(help="Load ~/tmp/prwhy-<pr-number>.md, replace {hash} with short HEAD hash, call gcopyhash(), and copy to clipboard")
@@ -2161,17 +2167,9 @@ def gcopybranch() -> None:
         typer.secho("❌ Not a git repo or failed to get branch name.", fg=typer.colors.RED)
         raise typer.Exit(1)
 
-    if sys.platform == "darwin" and _which("pbcopy"):
-        try:
-            typer.echo("📋 Copying branch name to clipboard...")
-            p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
-            p.communicate(branch.encode())
-            typer.secho(f"✅ Current branch name copied to clipboard: {branch}", fg=typer.colors.GREEN)
-            return
-        except Exception:
-            typer.secho("⚠️ Failed to copy to clipboard; falling back to printing.", fg=typer.colors.YELLOW)
-
-    typer.echo(branch)
+    if not _copy_to_clipboard(branch, f"✅ Current branch name copied to clipboard: {branch}",
+                             "⚠️ Failed to copy to clipboard; falling back to printing."):
+        typer.echo(branch)
 
 
 def _git_require_repo_or_exit() -> None:
@@ -2564,13 +2562,7 @@ def gappdiff(dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Check 
     _create_patch_file, _run, _show_patch_preview, _run_dry_run_check, and _apply_patch.
     """
     # Platform / dependency checks
-    if sys.platform != "darwin":
-        typer.secho("❌ gappdiff currently supports macOS (pbpaste).", fg=typer.colors.RED)
-        raise typer.Exit(1)
-
-    if not _which("pbpaste"):
-        typer.secho("❌ pbpaste not found in PATH.", fg=typer.colors.RED)
-        raise typer.Exit(1)
+    _ensure_macos_with_pbpaste()
 
     # Read clipboard (try helper first, fallback to pbpaste subprocess)
     clip = _read_clipboard_content()
@@ -2625,20 +2617,10 @@ def grevdiff() -> None:
 
     Mirrors the shell `grevdiff` helper. Requires macOS pbpaste.
     """
-    if sys.platform != "darwin":
-        typer.secho("❌ grevdiff currently supports macOS (pbpaste).", fg=typer.colors.RED)
-        raise typer.Exit(1)
-
-    if not _which("pbpaste"):
-        typer.secho("❌ pbpaste not found in PATH.", fg=typer.colors.RED)
-        raise typer.Exit(1)
+    _ensure_macos_with_pbpaste()
 
     typer.secho("📋 Saving clipboard contents to rev.patch...", fg=typer.colors.CYAN)
-    try:
-        proc = _run(["pbpaste"], check=False)
-        content = proc.stdout or ""
-    except Exception:
-        content = ""
+    content = _read_from_clipboard()
 
     if not content:
         typer.secho("❌ Failed to read clipboard or clipboard empty.", fg=typer.colors.RED)
@@ -3142,11 +3124,11 @@ def cdiff_cmd() -> None:
     # Try to use the macOS clipboard (pbpaste) when available for non-interactive use.
     try:
         with tempfile.NamedTemporaryFile(delete=False) as f1, tempfile.NamedTemporaryFile(delete=False) as f2:
-            if sys.platform == "darwin" and _which("pbpaste"):
+            if _is_macos_with_pbcopy():  # pbcopy implies pbpaste availability
                 # Use pbpaste to populate both files sequentially (user may have split content manually)
                 # First read current clipboard once into f1, then prompt for a second paste into f2.
-                proc = subprocess.run(["pbpaste"], capture_output=True, text=True)
-                f1.write(proc.stdout.encode())
+                clipboard_content = _read_from_clipboard()
+                f1.write(clipboard_content.encode())
 
                 # interactive second paste for convenience
                 with open("/dev/tty", "w") as tty_out, open("/dev/tty", "r") as tty_in:
@@ -3221,11 +3203,7 @@ def copyfromurl_cmd(url: str = typer.Argument(..., help="URL to fetch"), selecto
         proc_strip = _run([strip, "-m", *selectors], input=proc_curl.stdout)
         out = proc_strip.stdout or ""
 
-        if sys.platform == "darwin" and which("pbcopy"):
-            p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE, text=True)
-            p.communicate(out)
-            typer.secho("📋 Extracted content copied to clipboard!", fg=typer.colors.GREEN)
-        else:
+        if not _copy_to_clipboard(out, "📋 Extracted content copied to clipboard!"):
             typer.echo(out)
     except Exception as exc:
         typer.secho(f"❌ Failed: {exc}", fg=typer.colors.RED)
