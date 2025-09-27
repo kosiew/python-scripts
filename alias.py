@@ -594,6 +594,7 @@ def commits_between(
     all_messages = "\n".join(messages)
     if not _copy_to_clipboard(all_messages, "📋 Commit messages copied to clipboard!"):
         typer.echo("📋 Commit messages:\n" + all_messages)
+        typer.echo("❌ Failed to copy to clipboard\n")
 
 
 @app.command(help=f"Print short commit hashes ({SHORT_HASH_LENGTH} chars) between two commits (inclusive of range), excluding merge commits")
@@ -665,6 +666,7 @@ def hashes_between(
     all_hashes = "\n".join(hashes)
     if not _copy_to_clipboard(all_hashes, "📋 Commit hashes copied to clipboard!"):
         typer.echo("📋 Commit hashes:\n" + all_hashes)
+        typer.echo("❌ Failed to copy to clipboard\n")
 
 
 @app.command(help="Squash commits between two refs (inclusive) into a single commit with a summarized message")
