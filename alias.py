@@ -1601,84 +1601,6 @@ def greview_branch() -> None:
     typer.secho("🎉 Review branch workflow completed successfully! Codex Ask, use ggreviewpr snippet", fg=typer.colors.GREEN, bold=True)
 
 
-@app.command(help="Review PR workflow: wait for confirmation, apply diff, commit, push, and copy hash")
-def greview_pr() -> None:
-    """Execute the review PR workflow:
-    
-    1. Pause and wait for confirmation that PR diff has been copied
-    2. Run gappdiff to apply the patch from clipboard
-    3. Commit with message "CHANGES to review" using gacommit
-    4. Push changes to remote
-    5. Copy commit hash to clipboard
-    """
-    # Step 1: Wait for confirmation that PR diff has been copied
-    typer.secho("📋 Please copy the PR diff to your clipboard first.", fg=typer.colors.YELLOW, bold=True)
-    typer.secho("💡 Tip: You can use the browser to copy the diff from GitHub PR page.", fg=typer.colors.CYAN)
-    
-    if not typer.confirm("👉 Have you copied the PR diff to clipboard?", default=False):
-        typer.secho("❌ Cancelled: Please copy the PR diff first.", fg=typer.colors.RED)
-        raise typer.Exit(0)
-
-    # Step 2: Run gappdiff
-    typer.secho("📥 Applying patch from clipboard...", fg=typer.colors.CYAN)
-    try:
-        _gappdiff_core(dry_run=False)
-        typer.secho("✅ Patch applied successfully", fg=typer.colors.GREEN)
-    except typer.Exit as exc:
-        # gappdiff uses typer.Exit to signal success/failure
-        if exc.exit_code == 0:
-            typer.secho("✅ Patch applied successfully", fg=typer.colors.GREEN)
-        else:
-            typer.secho(f"❌ Failed to apply patch (exit code {exc.exit_code})", fg=typer.colors.RED)
-            raise typer.Exit(1)
-    except Exception as exc:
-        typer.secho(f"❌ Failed to apply patch: {exc}", fg=typer.colors.RED)
-        raise typer.Exit(1)
-
-    # Check if there are actually changes to commit
-    typer.secho("🔍 Checking for changes to commit...", fg=typer.colors.CYAN)
-    try:
-        staged_changes = _run(["git", "diff", "--cached", "--name-only"]).stdout.strip()
-        if not staged_changes:
-            typer.secho("⚠️ No changes to commit. The patch may have already been applied or resulted in no net changes.", fg=typer.colors.YELLOW)
-            typer.secho("✅ Workflow completed (no commit needed).", fg=typer.colors.GREEN)
-            return
-        else:
-            typer.secho(f"✅ Found changes to commit: {len(staged_changes.splitlines())} file(s)", fg=typer.colors.GREEN)
-    except Exception as exc:
-        typer.secho(f"❌ Failed to check staged changes: {exc}", fg=typer.colors.RED)
-        raise typer.Exit(1)
-
-    # Step 3: Commit with gacommit
-    typer.secho("📝 Committing changes...", fg=typer.colors.CYAN)
-    try:
-        gacommit(["CHANGES to review"])
-        typer.secho("✅ Changes committed", fg=typer.colors.GREEN)
-    except Exception as exc:
-        typer.secho(f"❌ Failed to commit changes: {exc}", fg=typer.colors.RED)
-        raise typer.Exit(1)
-
-    # Step 4: Git push
-    typer.secho("🚀 Pushing changes to remote...", fg=typer.colors.CYAN)
-    try:
-        _run(["git", "push"])
-        typer.secho("✅ Changes pushed to remote", fg=typer.colors.GREEN)
-    except Exception as exc:
-        typer.secho(f"❌ Failed to push changes: {exc}", fg=typer.colors.RED)
-        raise typer.Exit(1)
-
-    # Step 5: Copy commit hash
-    typer.secho("📋 Copying commit hash...", fg=typer.colors.CYAN)
-    try:
-        gcopyhash()
-        typer.secho("✅ Commit hash copied", fg=typer.colors.GREEN)
-    except Exception as exc:
-        typer.secho(f"❌ Failed to copy hash: {exc}", fg=typer.colors.RED)
-        raise typer.Exit(1)
-
-    typer.secho("🎉 Review PR workflow completed successfully!. Now go to Codex Ask, use ggreviewpr snippet", fg=typer.colors.GREEN, bold=True)
-
-
 @app.command(help="Squash a range of commits into one and apply to a target branch (gsquash)")
 def gsquash(
     c1: str = typer.Argument(..., help="Oldest commit in range (ancestor)"),
@@ -2595,8 +2517,10 @@ def gappdiff(dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Check 
         raise typer.Exit(1)
 
     # Ensure single trailing newline (some git apply flows expect it)
-    if not patch_text.endswith("\n"):
-        patch_text += "\n"
+    if not patch_text.endswith("
+"):
+        patch_text += "
+"
 
     # Create the patch file (helper returns a pathlib.Path-like object)
     patch_path = _create_patch_file(patch_text)
@@ -2617,6 +2541,99 @@ def gappdiff(dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Check 
         _run_dry_run_check(patch_path, root)
     else:
         _apply_patch(patch_path)
+
+
+@app.command(help="Apply a PR diff from the clipboard and commit (greview_pr)")
+def greview_pr(commit_msg: str = typer.Argument("CHANGES", help="Commit message to use")) -> None:
+    """Prompt to confirm clipboard contains PR diff, apply it (calls gappdiff), then run gacommit.
+
+    This function intentionally calls the simplified `gappdiff` and `gacommit` functions directly
+    so there is no dependency on a separate `_gappdiff_core` helper.
+    """
+    typer.secho("📋 Please copy the PR diff to your clipboard first.", fg=typer.colors.YELLOW, bold=True)
+    typer.secho("💡 Tip: You can use the browser to copy the diff from GitHub PR page.", fg=typer.colors.CYAN)
+
+    if not typer.confirm("👉 Have you copied the PR diff to clipboard?", default=False):
+        typer.secho("❌ Cancelled: Please copy the PR diff first.", fg=typer.colors.RED)
+        raise typer.Exit(0)
+
+    typer.secho("📥 Applying patch from clipboard...", fg=typer.colors.CYAN)
+    try:
+        # Call the simplified gappdiff function directly. Passing dry_run=False to apply.
+        gappdiff(dry_run=False)
+    except typer.Exit as exc:
+        # gappdiff uses typer.Exit to signal success/failure; treat non-zero as failure
+        if getattr(exc, "exit_code", None) in (None, 0):
+            # If exit_code is None or 0, assume success (some callers raise Exit(0) to quit)
+            pass
+        else:
+            typer.secho(f"❌ Failed to apply patch (exit code {exc.exit_code}).", fg=typer.colors.RED)
+            raise typer.Exit(1)
+    except Exception as exc:
+        typer.secho(f"❌ Failed to apply patch: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Step: Check whether there are staged changes to commit
+    typer.secho("🔍 Checking for changes to commit...", fg=typer.colors.CYAN)
+    try:
+        staged_changes = _run(["git", "diff", "--cached", "--name-only"]).stdout.strip()
+        if not staged_changes:
+            typer.secho("⚠️ No changes to commit. The patch may have already been applied or resulted in no net changes.", fg=typer.colors.YELLOW)
+            typer.secho("✅ Workflow completed (no commit needed).", fg=typer.colors.GREEN)
+            return
+        else:
+            typer.secho(f"✅ Found changes to commit: {len(staged_changes.splitlines())} file(s)", fg=typer.colors.GREEN)
+    except Exception as exc:
+        typer.secho(f"❌ Failed to check staged changes: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Stage all changes (some flows expect gappdiff to have staged, but ensure it)
+    typer.secho("➕ Staging all changes...", fg=typer.colors.CYAN)
+    try:
+        _run(["git", "add", "-A"])
+    except Exception as exc:
+        typer.secho(f"❌ Failed to stage changes: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Commit with gacommit. Try calling as function with a string, fall back to list-style if needed.
+    typer.secho("📝 Committing changes...", fg=typer.colors.CYAN)
+    try:
+        try:
+            # Prefer calling with a single string argument
+            gacommit(commit_msg)
+        except TypeError:
+            # Some implementations may expect a list of args
+            gacommit([commit_msg])
+    except typer.Exit as exc:
+        if getattr(exc, "exit_code", None) == 0:
+            typer.secho("✅ Changes committed", fg=typer.colors.GREEN)
+        else:
+            typer.secho(f"❌ gacommit failed (exit code {exc.exit_code}).", fg=typer.colors.RED)
+            raise typer.Exit(1)
+    except Exception as exc:
+        typer.secho(f"❌ gacommit failed: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Push changes
+    typer.secho("🚀 Pushing changes to remote...", fg=typer.colors.CYAN)
+    try:
+        _run(["git", "push"])
+        typer.secho("✅ Changes pushed to remote", fg=typer.colors.GREEN)
+    except Exception as exc:
+        typer.secho(f"❌ Failed to push changes: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Copy commit hash
+    typer.secho("📋 Copying commit hash...", fg=typer.colors.CYAN)
+    try:
+        # gcopyhash should copy latest commit hash to clipboard; call it directly
+        gcopyhash()
+        typer.secho("✅ Commit hash copied", fg=typer.colors.GREEN)
+    except Exception as exc:
+        typer.secho(f"❌ Failed to copy hash: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    typer.secho("🎉 Review PR workflow completed successfully!", fg=typer.colors.GREEN, bold=True)
 
 
 @app.command(help="Reverse-apply a patch saved in the clipboard to revert changes (grevdiff)")
