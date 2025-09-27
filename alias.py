@@ -2017,15 +2017,52 @@ def _load_and_fill_template(prefix: str, pr_number: str, copy_hash: bool = False
     prefix: 'reviewpr' or 'prwhy' etc.
     """
     p = Path.home() / "tmp" / f"{prefix}-{pr_number}.md"
-    if not p.exists():
-        typer.secho(f"❌ File not found: {p}", fg=typer.colors.RED)
-        raise typer.Exit(1)
 
-    try:
-        text = p.read_text(encoding="utf-8")
-    except Exception as exc:
-        typer.secho(f"❌ Failed to read file {p}: {exc}", fg=typer.colors.RED)
-        raise typer.Exit(1)
+    text: Optional[str] = None
+    if not p.exists():
+        # Prompt the user to copy the template to clipboard (like greview_pr)
+        typer.secho(f"📋 Please copy the '{prefix}' template for PR {pr_number} to your clipboard.", fg=typer.colors.YELLOW, bold=True)
+        typer.secho("💡 Tip: copy the template from your browser or template file and then confirm below.", fg=typer.colors.CYAN)
+        if not typer.confirm("👉 Have you copied the template to clipboard?", default=False):
+            typer.secho("❌ Cancelled: Template not provided.", fg=typer.colors.RED)
+            raise typer.Exit(1)
+
+        # Try to read from macOS clipboard (pbpaste). Fallback to reading stdin.
+        if sys.platform == "darwin" and _which("pbpaste"):
+            try:
+                text = _run(["pbpaste"]).stdout
+                # attempt to persist the clipboard content so subsequent runs find the file
+                try:
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    p.write_text(text, encoding="utf-8")
+                    typer.secho(f"✅ Saved template to: {p}", fg=typer.colors.GREEN)
+                except Exception:
+                    typer.secho("⚠️ Failed to save template to file; continuing with clipboard content.", fg=typer.colors.YELLOW)
+            except Exception:
+                typer.secho("⚠️ Failed to read from clipboard; please paste the template below and finish with Ctrl-D.", fg=typer.colors.YELLOW)
+                try:
+                    typer.echo("Paste template now, then press Ctrl-D:")
+                    text = sys.stdin.read()
+                except Exception:
+                    text = ""
+        else:
+            # Non-macOS fallback: prompt user to paste template into stdin
+            typer.secho("⚠️ Clipboard read not supported on this platform; please paste the template and press Ctrl-D.", fg=typer.colors.YELLOW)
+            try:
+                typer.echo("Paste template now, then press Ctrl-D:")
+                text = sys.stdin.read()
+            except Exception:
+                text = ""
+
+        if not text:
+            typer.secho("❌ No template content found in clipboard/stdin.", fg=typer.colors.RED)
+            raise typer.Exit(1)
+    else:
+        try:
+            text = p.read_text(encoding="utf-8")
+        except Exception as exc:
+            typer.secho(f"❌ Failed to read file {p}: {exc}", fg=typer.colors.RED)
+            raise typer.Exit(1)
 
     try:
         short_hash = _run(["git", "rev-parse", "--short", "HEAD"]).stdout.strip()
