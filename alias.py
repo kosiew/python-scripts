@@ -2553,54 +2553,17 @@ def _read_clipboard_content() -> str:
         
     return clip
 
-
-def _gappdiff_core(dry_run: bool = False) -> None:
-    """Core logic for applying patches from clipboard. Used internally by gappdiff and greview_pr.
-    
-    Args:
-        dry_run: If True, only check if patch would apply; if False, actually apply it
-        
-    Raises:
-        typer.Exit: With code 0 if successful, 1 if failed
-    """
-    if sys.platform != "darwin":
-        typer.secho("❌ gappdiff currently supports macOS (pbpaste).", fg=typer.colors.RED)
-        raise typer.Exit(1)
-
-    if not _which("pbpaste"):
-        typer.secho("❌ pbpaste not found in PATH.", fg=typer.colors.RED)
-        raise typer.Exit(1)
-
-    # Process clipboard and create patch file using helper functions
-    clip = _read_clipboard_content()
-    patch_text = _filter_patch_content(clip)
-    patch_text = _normalize_patch_text(patch_text)
-    patch_path = _create_patch_file(patch_text)
-
-    # Determine repo root
-    try:
-        root = _run(["git", "rev-parse", "--show-toplevel"]).stdout.strip()
-    except Exception:
-        typer.secho("❌ Repo root not found; ensure you're inside a git repo.", fg=typer.colors.RED)
-        raise typer.Exit(1)
-
-    # Show patch preview
-    _show_patch_preview(patch_text)
-    
-    if dry_run:
-        typer.secho("", fg=typer.colors.WHITE)  # Add spacing
-        _run_dry_run_check(patch_path, root)
-    else:
-        # Apply the patch
-        _apply_patch(patch_path)
-
-
 @app.command(help="Apply a patch from the clipboard (handles fenced code blocks) (gappdiff)")
 def gappdiff(dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Check whether patch would apply without applying")) -> None:
     """Read clipboard (macOS pbpaste), strip code fences and non-patch text, save to ~/tmp/tools with timestamp,
     and apply with `git apply --3way --index`. Use --dry-run to only check with --3way --check.
+
+    This simplified version contains the full flow in one function and no longer calls a separate
+    _gappdiff_core helper. It still relies on the existing small helpers in the module:
+    _which, _read_clipboard_content, _filter_patch_content, _normalize_patch_text,
+    _create_patch_file, _run, _show_patch_preview, _run_dry_run_check, and _apply_patch.
     """
-    _gappdiff_core(dry_run)
+    # Platform / dependency checks
     if sys.platform != "darwin":
         typer.secho("❌ gappdiff currently supports macOS (pbpaste).", fg=typer.colors.RED)
         raise typer.Exit(1)
@@ -2609,50 +2572,34 @@ def gappdiff(dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Check 
         typer.secho("❌ pbpaste not found in PATH.", fg=typer.colors.RED)
         raise typer.Exit(1)
 
-    # Process clipboard and create patch file using helper functions
+    # Read clipboard (try helper first, fallback to pbpaste subprocess)
     clip = _read_clipboard_content()
-    patch_text = _filter_patch_content(clip)
-    patch_text = _normalize_patch_text(patch_text)
-    patch_path = _create_patch_file(patch_text)
-
-    try:
-        proc = _run(["pbpaste"], check=False)
-        clip = proc.stdout or ""
-    except Exception:
-        clip = ""
+    if not clip:
+        try:
+            proc = _run(["pbpaste"], check=False)
+            clip = proc.stdout or ""
+        except Exception:
+            clip = ""
 
     if not clip:
         typer.secho("❌ Clipboard empty or pbpaste failed.", fg=typer.colors.RED)
         raise typer.Exit(1)
 
-    # Filter similar to shell awk: skip fenced code blocks and start printing at first 'diff --git'
-    lines = clip.splitlines()
-    out_lines = []
-    in_fence = False
-    started = False
-    for ln in lines:
-        if ln.startswith("```") or ln.startswith("~~~"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-        if not started and ln.startswith("diff --git "):
-            started = True
-        if started:
-            out_lines.append(ln)
-
-    patch_text = "\n".join(out_lines)
-    # Normalize CRLF and ensure the patch ends with a single trailing newline
-    # Some git apply flows expect a trailing blank line; make it explicit.
-    patch_text = patch_text.replace("\r\n", "\n").replace("\r", "\n")
+    # Filter / normalize patch text
+    # _filter_patch_content should handle fenced-code removal and selecting from first 'diff --git'.
+    patch_text = _filter_patch_content(clip)
+    patch_text = _normalize_patch_text(patch_text)
 
     if not patch_text.strip():
         typer.secho("❌ Clipboard doesn’t contain a valid patch (no 'diff --git').", fg=typer.colors.RED)
         raise typer.Exit(1)
 
+    # Ensure single trailing newline (some git apply flows expect it)
     if not patch_text.endswith("\n"):
         patch_text += "\n"
-    patch_path.write_text(patch_text, encoding="utf-8")
+
+    # Create the patch file (helper returns a pathlib.Path-like object)
+    patch_path = _create_patch_file(patch_text)
 
     # Determine repo root
     try:
@@ -2661,12 +2608,16 @@ def gappdiff(dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Check 
         typer.secho("❌ Repo root not found; ensure you're inside a git repo.", fg=typer.colors.RED)
         raise typer.Exit(1)
 
-    # Show patch preview
+    # Show a preview to the user
     _show_patch_preview(patch_text)
-    
+
+    # Dry-run vs apply
     if dry_run:
-        typer.secho("", fg=typer.colors.WHITE)  # Add spacing
+        typer.secho("", fg=typer.colors.WHITE)  # spacing for readability
         _run_dry_run_check(patch_path, root)
+    else:
+        _apply_patch(patch_path)
+
 
 @app.command(help="Reverse-apply a patch saved in the clipboard to revert changes (grevdiff)")
 def grevdiff() -> None:
