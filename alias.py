@@ -2296,7 +2296,7 @@ def swapmsgs(
 
 @app.command(help="Apply a patch from the clipboard (handles fenced code blocks) (gappdiff)")
 def gappdiff(dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Check whether patch would apply without applying")) -> None:
-    """Read clipboard (macOS pbpaste), strip code fences and non-patch text, save to a temp file,
+    """Read clipboard (macOS pbpaste), strip code fences and non-patch text, save to ~/tmp/tools with timestamp,
     and apply with `git apply --3way --index`. Use --dry-run to only check with --3way --check.
     """
     if sys.platform != "darwin":
@@ -2307,10 +2307,11 @@ def gappdiff(dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Check 
         typer.secho("❌ pbpaste not found in PATH.", fg=typer.colors.RED)
         raise typer.Exit(1)
 
-    import tempfile
-
-    tmpdir = Path(tempfile.mkdtemp(prefix="gappdiff."))
-    patch_path = tmpdir / "clip.patch"
+    # Create timestamped filename and use ~/tmp/tools directory
+    filename = f"gappdiff-{_nowstamp()}.patch"
+    outdir = _get_output_dir(filename)
+    outdir.mkdir(parents=True, exist_ok=True)
+    patch_path = outdir / filename
 
     # Read clipboard and filter: drop fenced blocks and everything before first 'diff --git'
     try:
@@ -2373,11 +2374,7 @@ def gappdiff(dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Check 
         proc = _run(["git", "apply", "--3way", "--index", "--check", str(patch_path)], check=False)
         if proc.returncode == 0:
             typer.secho("✅ Patch would apply cleanly.", fg=typer.colors.GREEN)
-            # Clean up temporary patch file
-            try:
-                patch_path.unlink()
-            except Exception:
-                pass
+            typer.secho(f"   📁 Patch saved to: {patch_path}", fg=typer.colors.CYAN)
             raise typer.Exit(0)
         else:
             # Provide git's stderr for debugging when available
@@ -2409,11 +2406,7 @@ def gappdiff(dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Check 
                 typer.secho(f"   {line}", fg=typer.colors.GREEN)
             if len(stdout.splitlines()) > 5:
                 typer.secho("   ... (use 'git status' to see all changes)", fg=typer.colors.GREEN)
-        # Clean up temporary patch file on success
-        try:
-            patch_path.unlink()
-        except Exception:
-            pass
+        typer.secho(f"   📁 Patch saved to: {patch_path}", fg=typer.colors.CYAN)
         raise typer.Exit(0)
     else:
         # However, sometimes git apply exits non-zero but has applied hunks and
@@ -2423,11 +2416,7 @@ def gappdiff(dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Check 
         if (cached.stdout or "").strip():
             typer.secho("⚠️ git apply exited non-zero but changes are staged.", fg=typer.colors.YELLOW)
             typer.secho("🎉 Applied. Changes are staged.", fg=typer.colors.GREEN)
-            # Clean up temporary patch file on success
-            try:
-                patch_path.unlink()
-            except Exception:
-                pass
+            typer.secho(f"   📁 Patch saved to: {patch_path}", fg=typer.colors.CYAN)
             raise typer.Exit(0)
         # Nothing staged — report failure and show stderr
         stderr = (proc.stderr or "").strip()
