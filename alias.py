@@ -1622,7 +1622,7 @@ def greview_pr() -> None:
     # Step 2: Run gappdiff
     typer.secho("📥 Applying patch from clipboard...", fg=typer.colors.CYAN)
     try:
-        gappdiff()
+        _gappdiff_core(dry_run=False)
         typer.secho("✅ Patch applied successfully", fg=typer.colors.GREEN)
     except typer.Exit as exc:
         # gappdiff uses typer.Exit to signal success/failure
@@ -2554,11 +2554,53 @@ def _read_clipboard_content() -> str:
     return clip
 
 
+def _gappdiff_core(dry_run: bool = False) -> None:
+    """Core logic for applying patches from clipboard. Used internally by gappdiff and greview_pr.
+    
+    Args:
+        dry_run: If True, only check if patch would apply; if False, actually apply it
+        
+    Raises:
+        typer.Exit: With code 0 if successful, 1 if failed
+    """
+    if sys.platform != "darwin":
+        typer.secho("❌ gappdiff currently supports macOS (pbpaste).", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    if not _which("pbpaste"):
+        typer.secho("❌ pbpaste not found in PATH.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Process clipboard and create patch file using helper functions
+    clip = _read_clipboard_content()
+    patch_text = _filter_patch_content(clip)
+    patch_text = _normalize_patch_text(patch_text)
+    patch_path = _create_patch_file(patch_text)
+
+    # Determine repo root
+    try:
+        root = _run(["git", "rev-parse", "--show-toplevel"]).stdout.strip()
+    except Exception:
+        typer.secho("❌ Repo root not found; ensure you're inside a git repo.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Show patch preview
+    _show_patch_preview(patch_text)
+    
+    if dry_run:
+        typer.secho("", fg=typer.colors.WHITE)  # Add spacing
+        _run_dry_run_check(patch_path, root)
+    else:
+        # Apply the patch
+        _apply_patch(patch_path)
+
+
 @app.command(help="Apply a patch from the clipboard (handles fenced code blocks) (gappdiff)")
 def gappdiff(dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Check whether patch would apply without applying")) -> None:
     """Read clipboard (macOS pbpaste), strip code fences and non-patch text, save to ~/tmp/tools with timestamp,
     and apply with `git apply --3way --index`. Use --dry-run to only check with --3way --check.
     """
+    _gappdiff_core(dry_run)
     if sys.platform != "darwin":
         typer.secho("❌ gappdiff currently supports macOS (pbpaste).", fg=typer.colors.RED)
         raise typer.Exit(1)
@@ -2625,10 +2667,6 @@ def gappdiff(dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Check 
     if dry_run:
         typer.secho("", fg=typer.colors.WHITE)  # Add spacing
         _run_dry_run_check(patch_path, root)
-    
-    # Apply the patch
-    _apply_patch(patch_path)
-
 
 @app.command(help="Reverse-apply a patch saved in the clipboard to revert changes (grevdiff)")
 def grevdiff() -> None:
