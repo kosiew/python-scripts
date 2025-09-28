@@ -8,7 +8,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from string import Template
-from typing import Optional, List, Callable
+from typing import Optional, List, Callable, NamedTuple
 
 import typer
 
@@ -22,6 +22,17 @@ app = typer.Typer(
     help="Reusable helpers for zsh aliases (GitHub issue notes, templating, git helpers).",
     no_args_is_help=True,
 )
+
+
+class CommitResult(NamedTuple):
+    """Result type for commit lookups.
+
+    Attributes:
+        sha: The full commit SHA as a string, or None when not found.
+        message: The commit subject/message, or None when not found.
+    """
+    sha: Optional[str]
+    message: Optional[str]
 
 # -------------------------
 # Utilities
@@ -338,7 +349,7 @@ def _read_local_template(filename: str) -> Optional[str]:
     return None
 
 
-def _get_first_commit(start_hash: str, pattern: str, match: bool) -> tuple[Optional[str], Optional[str]]:
+def _get_first_commit(start_hash: str, pattern: str, match: bool) -> CommitResult:
     """Find the first commit in range `start_hash^..HEAD` that matches (or does not match) `pattern`.
 
     Scans commits from oldest to newest and returns a tuple of (commit_hash, commit_message).
@@ -356,7 +367,7 @@ def _get_first_commit(start_hash: str, pattern: str, match: bool) -> tuple[Optio
         proc = _run(["git", "log", "--reverse", "--pretty=format:%H%x00%s", rng], check=False)
         out = (proc.stdout or "").strip()
         if not out:
-            return (None, None)
+            return CommitResult(None, None)
 
         for line in out.splitlines():
             if not line:
@@ -375,12 +386,12 @@ def _get_first_commit(start_hash: str, pattern: str, match: bool) -> tuple[Optio
                 matched = pattern in msg
 
             if (match and matched) or (not match and not matched):
-                return (sha, msg)
+                return CommitResult(sha, msg)
     except Exception:
         # Best-effort: return None on any error
-        return (None, None)
+        return CommitResult(None, None)
 
-    return (None, None)
+    return CommitResult(None, None)
 
 
 def _render_and_write(issue_id: str, url: str, prefix: str, tpl_text: str, summary_text: str, ts: str, no_open: bool, editor: Optional[str]) -> Path:
@@ -2085,6 +2096,54 @@ def reviewpr(pr_number: str = typer.Argument(..., help="PR number, e.g. 43197"))
     typer.echo(filled)
 
 
+def _get_template_from_clipboard_or_stdin(prefix: str, pr_number: str) -> str:
+    """Prompt the user to copy a template to the clipboard and read it.
+
+    Returns the template text read from the macOS clipboard (pbpaste) or from stdin.
+    Raises typer.Exit(1) if the user cancels or no content is found.
+    """
+    typer.secho(f"📋 Please copy the '{prefix}' template for PR {pr_number} to your clipboard.", fg=typer.colors.YELLOW, bold=True)
+    typer.secho("💡 Tip: copy the template from your browser or template file and then confirm below.", fg=typer.colors.CYAN)
+    if not typer.confirm("👉 Have you copied the template to clipboard?", default=False):
+        typer.secho("❌ Cancelled: Template not provided.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    text: str = ""
+    # Try to read from macOS clipboard (pbpaste). Fallback to reading stdin.
+    if _is_macos_with_pbcopy():  # pbcopy implies pbpaste availability
+        text = _read_from_clipboard()
+        if text:
+            # attempt to persist the clipboard content so subsequent runs find the file
+            try:
+                p = Path.home() / "tmp" / f"{prefix}-{pr_number}.md"
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(text, encoding="utf-8")
+                typer.secho(f"✅ Saved template to: {p}", fg=typer.colors.GREEN)
+            except Exception:
+                typer.secho("⚠️ Failed to save template to file; continuing with clipboard content.", fg=typer.colors.YELLOW)
+        else:
+            typer.secho("⚠️ Failed to read from clipboard; please paste the template below and finish with Ctrl-D.", fg=typer.colors.YELLOW)
+            try:
+                typer.echo("Paste template now, then press Ctrl-D:")
+                text = sys.stdin.read()
+            except Exception:
+                text = ""
+    else:
+        # Non-macOS fallback: prompt user to paste template into stdin
+        typer.secho("⚠️ Clipboard read not supported on this platform; please paste the template and press Ctrl-D.", fg=typer.colors.YELLOW)
+        try:
+            typer.echo("Paste template now, then press Ctrl-D:")
+            text = sys.stdin.read()
+        except Exception:
+            text = ""
+
+    if not text:
+        typer.secho("❌ No template content found in clipboard/stdin.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    return text
+
+
 def _load_and_fill_template(prefix: str, pr_number: str, copy_hash: bool = False) -> str:
     """Helper to load ~/tmp/<prefix>-<pr_number>.md, replace {hash} with the
     short HEAD commit hash, optionally copy the short hash to the clipboard
@@ -2096,43 +2155,8 @@ def _load_and_fill_template(prefix: str, pr_number: str, copy_hash: bool = False
 
     text: Optional[str] = None
     if not p.exists():
-        # Prompt the user to copy the template to clipboard (like greview_pr)
-        typer.secho(f"📋 Please copy the '{prefix}' template for PR {pr_number} to your clipboard.", fg=typer.colors.YELLOW, bold=True)
-        typer.secho("💡 Tip: copy the template from your browser or template file and then confirm below.", fg=typer.colors.CYAN)
-        if not typer.confirm("👉 Have you copied the template to clipboard?", default=False):
-            typer.secho("❌ Cancelled: Template not provided.", fg=typer.colors.RED)
-            raise typer.Exit(1)
-
-        # Try to read from macOS clipboard (pbpaste). Fallback to reading stdin.
-        if _is_macos_with_pbcopy():  # pbcopy implies pbpaste availability 
-            text = _read_from_clipboard()
-            if text:
-                # attempt to persist the clipboard content so subsequent runs find the file
-                try:
-                    p.parent.mkdir(parents=True, exist_ok=True)
-                    p.write_text(text, encoding="utf-8")
-                    typer.secho(f"✅ Saved template to: {p}", fg=typer.colors.GREEN)
-                except Exception:
-                    typer.secho("⚠️ Failed to save template to file; continuing with clipboard content.", fg=typer.colors.YELLOW)
-            else:
-                typer.secho("⚠️ Failed to read from clipboard; please paste the template below and finish with Ctrl-D.", fg=typer.colors.YELLOW)
-                try:
-                    typer.echo("Paste template now, then press Ctrl-D:")
-                    text = sys.stdin.read()
-                except Exception:
-                    text = ""
-        else:
-            # Non-macOS fallback: prompt user to paste template into stdin
-            typer.secho("⚠️ Clipboard read not supported on this platform; please paste the template and press Ctrl-D.", fg=typer.colors.YELLOW)
-            try:
-                typer.echo("Paste template now, then press Ctrl-D:")
-                text = sys.stdin.read()
-            except Exception:
-                text = ""
-
-        if not text:
-            typer.secho("❌ No template content found in clipboard/stdin.", fg=typer.colors.RED)
-            raise typer.Exit(1)
+        # Prompt the user to copy the template and read it from clipboard or stdin
+        text = _get_template_from_clipboard_or_stdin(prefix, pr_number)
     else:
         try:
             text = p.read_text(encoding="utf-8")
