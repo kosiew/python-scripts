@@ -2287,7 +2287,9 @@ def _load_and_fill_template(prefix: str, pr_number: str, copy_hash: bool = False
         start_short = _resolve_start_short(short_hash, "UNPICK", False)
         if start_short:
             filled = filled.replace("{START}", start_short)
+            typer.secho(f"✅ Resolved {{START}} to commit: {start_short}", fg=typer.colors.GREEN)
 
+    typer.secho(f"✅ Replaced {{hash}} with: {short_hash}", fg=typer.colors.GREEN)
     if copy_hash:
         # Try to invoke the local function to copy the short hash, fall back to pbcopy
         try:
