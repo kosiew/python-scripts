@@ -259,6 +259,23 @@ def _git_main_branch() -> Optional[str]:
         return None
     return None
 
+def _git_merge_base(branch: Optional[str] = None) -> Optional[str]:
+    """Get merge-base between HEAD and the specified branch.
+    
+    Args:
+        branch: Branch to find merge-base with. If None, uses main branch.
+        
+    Returns:
+        Merge-base commit hash, or None if not found or on error
+    """
+    target_branch = branch or _git_main_branch() or "main"
+    try:
+        proc = _run(["git", "merge-base", "HEAD", target_branch], check=False)
+        mb = (proc.stdout or "").strip()
+        return mb if mb else None
+    except Exception:
+        return None
+
 # -------------------------
 # Filename & summaries
 # -------------------------
@@ -387,11 +404,7 @@ def _build_git_diff_cmd_and_msg(items: List[str], exclude_agents: bool = True) -
             cmd = ["git", "diff", commit, "--", *files]
     else:
         # no args: prefer merge-base..HEAD
-        try:
-            mb_proc = _run(["git", "merge-base", "HEAD", def_branch], check=False)
-            mb = (mb_proc.stdout or "").strip()
-        except Exception:
-            mb = ""
+        mb = _git_merge_base(def_branch)
 
         if mb:
             msg = f"🔍 No arguments provided. Comparing merge-base {mb}..HEAD"
@@ -556,21 +569,15 @@ def commits_between(
     if commit1 is None and commit2 is None:
         # Use same logic as gdiff without arguments - get range from merge-base to HEAD
         def_branch = _git_main_branch() or "main"
-        try:
-            mb_proc = _run(["git", "merge-base", "HEAD", def_branch], check=False)
-            mb = (mb_proc.stdout or "").strip()
-            if mb:
-                commit1 = mb
-                commit2 = "HEAD"
-                typer.secho(f"🔍 Using merge-base range: {commit1}..{commit2}", fg=typer.colors.CYAN)
-            else:
-                commit1 = def_branch
-                commit2 = "HEAD"
-                typer.secho(f"🔍 No merge-base found. Using: {commit1}..{commit2}", fg=typer.colors.CYAN)
-        except Exception:
+        mb = _git_merge_base(def_branch)
+        if mb:
+            commit1 = mb
+            commit2 = "HEAD"
+            typer.secho(f"🔍 Using merge-base range: {commit1}..{commit2}", fg=typer.colors.CYAN)
+        else:
             commit1 = def_branch
             commit2 = "HEAD"
-            typer.secho(f"🔍 Failed to compute merge-base. Using: {commit1}..{commit2}", fg=typer.colors.CYAN)
+            typer.secho(f"🔍 No merge-base found. Using: {commit1}..{commit2}", fg=typer.colors.CYAN)
     elif commit2 is None:
         # Default commit2 to HEAD if not specified
         commit2 = "HEAD"
@@ -628,21 +635,15 @@ def hashes_between(
     if commit1 is None and commit2 is None:
         # Use same logic as gdiff without arguments - get range from merge-base to HEAD
         def_branch = _git_main_branch() or "main"
-        try:
-            mb_proc = _run(["git", "merge-base", "HEAD", def_branch], check=False)
-            mb = (mb_proc.stdout or "").strip()
-            if mb:
-                commit1 = mb
-                commit2 = "HEAD"
-                typer.secho(f"🔍 Using merge-base range: {commit1}..{commit2}", fg=typer.colors.CYAN)
-            else:
-                commit1 = def_branch
-                commit2 = "HEAD"
-                typer.secho(f"🔍 No merge-base found. Using: {commit1}..{commit2}", fg=typer.colors.CYAN)
-        except Exception:
+        mb = _git_merge_base(def_branch)
+        if mb:
+            commit1 = mb
+            commit2 = "HEAD"
+            typer.secho(f"🔍 Using merge-base range: {commit1}..{commit2}", fg=typer.colors.CYAN)
+        else:
             commit1 = def_branch
             commit2 = "HEAD"
-            typer.secho(f"🔍 Failed to compute merge-base. Using: {commit1}..{commit2}", fg=typer.colors.CYAN)
+            typer.secho(f"🔍 No merge-base found. Using: {commit1}..{commit2}", fg=typer.colors.CYAN)
     elif commit2 is None:
         # Default commit2 to HEAD if not specified
         commit2 = "HEAD"
@@ -801,18 +802,13 @@ def gdiff(args: List[str] = typer.Argument(None, help="Arguments forwarded to gi
             cmd = ["git", "diff", commit, "--", *files]
     else:
         # Prefer showing changes since the common ancestor with the main branch
-        try:
-            mb_proc = _run(["git", "merge-base", "HEAD", def_branch], check=False)
-            mb = (mb_proc.stdout or "").strip()
-            if mb:
-                # use the merge-base..HEAD range which is what the user requested
-                typer.secho(f"🔍 No arguments provided. Comparing merge-base {mb}..HEAD (excluding AGENTS.md)", fg=typer.colors.CYAN)
-                cmd = ["git", "diff", f"{mb}..HEAD", "--", ".", ":(exclude)AGENTS.md"]
-            else:
-                typer.secho(f"🔍 No merge-base found. Falling back to comparing against default branch: {def_branch} (excluding AGENTS.md)", fg=typer.colors.CYAN)
-                cmd = ["git", "diff", def_branch, "--", ".", ":(exclude)AGENTS.md"]
-        except Exception:
-            typer.secho(f"🔍 Failed to compute merge-base. Falling back to comparing against default branch: {def_branch} (excluding AGENTS.md)", fg=typer.colors.CYAN)
+        mb = _git_merge_base(def_branch)
+        if mb:
+            # use the merge-base..HEAD range which is what the user requested
+            typer.secho(f"🔍 No arguments provided. Comparing merge-base {mb}..HEAD (excluding AGENTS.md)", fg=typer.colors.CYAN)
+            cmd = ["git", "diff", f"{mb}..HEAD", "--", ".", ":(exclude)AGENTS.md"]
+        else:
+            typer.secho(f"🔍 No merge-base found. Falling back to comparing against default branch: {def_branch} (excluding AGENTS.md)", fg=typer.colors.CYAN)
             cmd = ["git", "diff", def_branch, "--", ".", ":(exclude)AGENTS.md"]
 
     # Run git diff and capture output
