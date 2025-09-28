@@ -394,6 +394,28 @@ def _get_first_commit(start_hash: str, pattern: str, match: bool) -> CommitResul
     return CommitResult(None, None)
 
 
+def _resolve_start_short(short_hash: str) -> str:
+    """Resolve the `{START}` placeholder to a truncated commit sha.
+
+    Finds the merge-base between HEAD and main (via `_git_merge_base`), then
+    locates the first commit in `merge-base^..HEAD` whose message does NOT
+    contain 'UNPICK'. Returns the truncated sha (to the length of `short_hash`
+    or `SHORT_HASH_LENGTH` if `short_hash` is empty). Returns empty string on
+    any failure or if no commit found.
+    """
+    try:
+        mb = _git_merge_base()
+        if not mb:
+            return ""
+
+        res = _get_first_commit(mb, "UNPICK", match=False)
+        start_sha = res.sha or ""
+        trunc_len = len(short_hash) if short_hash else SHORT_HASH_LENGTH
+        return start_sha[:trunc_len] if start_sha else ""
+    except Exception:
+        return ""
+
+
 def _render_and_write(issue_id: str, url: str, prefix: str, tpl_text: str, summary_text: str, ts: str, no_open: bool, editor: Optional[str]) -> Path:
     """Substitute variables into tpl_text, write to generated filename, and open editor unless suppressed.
 
@@ -2170,6 +2192,16 @@ def _load_and_fill_template(prefix: str, pr_number: str, copy_hash: bool = False
         short_hash = ""
 
     filled = text.replace("{hash}", short_hash)
+
+    # If template contains {START}, attempt to resolve it to the first commit
+    # after the merge-base which does NOT contain the string 'UNPICK' in
+    # its commit message. Truncate the returned sha to the same length as
+    # `short_hash` (fall back to SHORT_HASH_LENGTH when short_hash is empty).
+    if "{START}" in text:
+        # Use extracted helper to resolve the truncated start sha
+        start_short = _resolve_start_short(short_hash)
+        if start_short:
+            filled = filled.replace("{START}", start_short)
 
     if copy_hash:
         # Try to invoke the local function to copy the short hash, fall back to pbcopy
