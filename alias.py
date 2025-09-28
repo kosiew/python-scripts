@@ -338,6 +338,51 @@ def _read_local_template(filename: str) -> Optional[str]:
     return None
 
 
+def _get_first_commit(start_hash: str, pattern: str, match: bool) -> tuple[Optional[str], Optional[str]]:
+    """Find the first commit in range `start_hash^..HEAD` that matches (or does not match) `pattern`.
+
+    Scans commits from oldest to newest and returns a tuple of (commit_hash, commit_message).
+    If no matching commit is found or on error, returns (None, None).
+
+    Args:
+        start_hash: The starting commit hash (the search range is `start_hash^..HEAD`).
+        pattern: A regular expression to test against the commit message.
+        match: If True, return the first commit whose message matches the pattern.
+               If False, return the first commit whose message does NOT match the pattern.
+    """
+    try:
+        rng = f"{start_hash}^..HEAD"
+        # Use NUL-separated output to safely split subject lines
+        proc = _run(["git", "log", "--reverse", "--pretty=format:%H%x00%s", rng], check=False)
+        out = (proc.stdout or "").strip()
+        if not out:
+            return (None, None)
+
+        for line in out.splitlines():
+            if not line:
+                continue
+            if "\x00" in line:
+                sha, msg = line.split("\x00", 1)
+            else:
+                parts = line.split(None, 1)
+                sha = parts[0]
+                msg = parts[1] if len(parts) > 1 else ""
+
+            try:
+                matched = bool(re.search(pattern, msg))
+            except re.error:
+                # If the provided pattern is not a valid regex, fall back to substring check
+                matched = pattern in msg
+
+            if (match and matched) or (not match and not matched):
+                return (sha, msg)
+    except Exception:
+        # Best-effort: return None on any error
+        return (None, None)
+
+    return (None, None)
+
+
 def _render_and_write(issue_id: str, url: str, prefix: str, tpl_text: str, summary_text: str, ts: str, no_open: bool, editor: Optional[str]) -> Path:
     """Substitute variables into tpl_text, write to generated filename, and open editor unless suppressed.
 
