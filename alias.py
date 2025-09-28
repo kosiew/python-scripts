@@ -283,6 +283,7 @@ def _git_merge_base(branch: Optional[str] = None) -> Optional[str]:
     try:
         proc = _run(["git", "merge-base", "HEAD", target_branch], check=False)
         mb = (proc.stdout or "").strip()
+        typer.secho(f"🧭 Detected merge-base: {mb}", fg=typer.colors.CYAN)
         return mb if mb else None
     except Exception:
         return None
@@ -394,7 +395,7 @@ def _get_first_commit(start_hash: str, pattern: str, match: bool) -> CommitResul
     return CommitResult(None, None)
 
 
-def _resolve_start_short(short_hash: str, pattern: str = "UNPICK", match: bool = False) -> str:
+def _resolve_start_short(short_hash: str, pattern: str = "UNPICK", match: bool = False, repo: Optional[str] = None) -> str:
     """Resolve the `{START}` placeholder to a truncated commit sha.
 
     Finds the merge-base between HEAD and main (via `_git_merge_base`), then
@@ -404,14 +405,98 @@ def _resolve_start_short(short_hash: str, pattern: str = "UNPICK", match: bool =
     any failure or if no commit found.
     """
     try:
-        mb = _git_merge_base()
+        # If a repo path is given, run git commands within that directory so
+        # callers can resolve START against a different repository than the
+        # current working directory.
+        if repo:
+            # Determine main branch name in the target repo (prefer local main/master)
+            target_branch = None
+            for name in ("main", "master"):
+                proc = _run(["git", "show-ref", f"refs/heads/{name}"], check=False, cwd=repo)
+                if proc.returncode == 0:
+                    target_branch = name
+                    break
+            if not target_branch:
+                proc = _run(["git", "rev-parse", "--abbrev-ref", "origin/HEAD"], check=False, cwd=repo)
+                out = (proc.stdout or "").strip()
+                if out and out != "origin/HEAD":
+                    target_branch = out.split("/")[-1]
+                else:
+                    proc = _run(["git", "remote", "show", "origin"], check=False, cwd=repo)
+                    m = re.search(r"HEAD branch: (\S+)", proc.stdout or "")
+                    if m:
+                        target_branch = m.group(1)
+
+            target_branch = target_branch or "main"
+            proc = _run(["git", "merge-base", "HEAD", target_branch], check=False, cwd=repo)
+            mb = (proc.stdout or "").strip()
+        else:
+            mb = _git_merge_base()
+
         if not mb:
             return ""
 
-        res = _get_first_commit(mb, pattern, match=match)
-        start_sha = res.sha or ""
-        trunc_len = len(short_hash) if short_hash else SHORT_HASH_LENGTH
-        return start_sha[:trunc_len] if start_sha else ""
+        # Get the full ordered list of commits in the range mb^..HEAD
+        rng = f"{mb}^..HEAD"
+        if repo:
+            proc = _run(["git", "log", "--reverse", "--pretty=format:%H%x00%s", rng], check=False, cwd=repo)
+        else:
+            proc = _run(["git", "log", "--reverse", "--pretty=format:%H%x00%s", rng], check=False)
+        out = (proc.stdout or "").strip()
+        if not out:
+            return ""
+
+        commits: List[tuple[str, str]] = []
+        for line in out.splitlines():
+            if not line:
+                continue
+            if "\x00" in line:
+                sha, msg = line.split("\x00", 1)
+            else:
+                parts = line.split(None, 1)
+                sha = parts[0]
+                msg = parts[1] if len(parts) > 1 else ""
+            commits.append((sha, msg))
+
+        # Helper to test match (regex with fallback)
+        def _matches(msg: str) -> bool:
+            try:
+                return bool(re.search(pattern, msg))
+            except re.error:
+                return pattern in msg
+
+        if match:
+            # If caller asked to match, return the first matching commit
+            for sha, msg in commits:
+                if _matches(msg):
+                    start_sha = sha
+                    trunc_len = len(short_hash) if short_hash else SHORT_HASH_LENGTH
+                    return start_sha[:trunc_len]
+            return ""
+
+        # match == False: prefer the first non-matching commit AFTER the last match
+        last_match_idx = -1
+        for i, (_sha, msg) in enumerate(commits):
+            if _matches(msg):
+                last_match_idx = i
+
+        # If there was at least one match, pick the commit immediately after it
+        if last_match_idx != -1:
+            after_idx = last_match_idx + 1
+            if after_idx < len(commits):
+                start_sha = commits[after_idx][0]
+                trunc_len = len(short_hash) if short_hash else SHORT_HASH_LENGTH
+                return start_sha[:trunc_len]
+            # No commit after the last match
+            return ""
+
+        # No matches found: return the first non-matching commit (oldest)
+        for sha, msg in commits:
+            if not _matches(msg):
+                trunc_len = len(short_hash) if short_hash else SHORT_HASH_LENGTH
+                return sha[:trunc_len]
+
+        return ""
     except Exception:
         return ""
 
