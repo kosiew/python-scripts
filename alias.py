@@ -394,7 +394,7 @@ def _get_first_commit(start_hash: str, pattern: str, match: bool) -> CommitResul
     return CommitResult(None, None)
 
 
-def _resolve_start_short(short_hash: str) -> str:
+def _resolve_start_short(short_hash: str, pattern: str = "UNPICK", match: bool = False) -> str:
     """Resolve the `{START}` placeholder to a truncated commit sha.
 
     Finds the merge-base between HEAD and main (via `_git_merge_base`), then
@@ -408,7 +408,7 @@ def _resolve_start_short(short_hash: str) -> str:
         if not mb:
             return ""
 
-        res = _get_first_commit(mb, "UNPICK", match=False)
+        res = _get_first_commit(mb, pattern, match=match)
         start_sha = res.sha or ""
         trunc_len = len(short_hash) if short_hash else SHORT_HASH_LENGTH
         return start_sha[:trunc_len] if start_sha else ""
@@ -2198,8 +2198,8 @@ def _load_and_fill_template(prefix: str, pr_number: str, copy_hash: bool = False
     # its commit message. Truncate the returned sha to the same length as
     # `short_hash` (fall back to SHORT_HASH_LENGTH when short_hash is empty).
     if "{START}" in text:
-        # Use extracted helper to resolve the truncated start sha
-        start_short = _resolve_start_short(short_hash)
+        # Use extracted helper to resolve the truncated start sha (defaults preserve previous behavior)
+        start_short = _resolve_start_short(short_hash, "UNPICK", False)
         if start_short:
             filled = filled.replace("{START}", start_short)
 
