@@ -9,6 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from string import Template
 from typing import Optional, List, Callable, NamedTuple
+import time
+
 
 import typer
 
@@ -84,8 +86,62 @@ def _extract_id(url: str) -> str:
     return url.rstrip("/").split("/")[-1]
 
 
+def _wait_for_clean_working_tree(timeout: Optional[int] = None, poll_interval: Optional[float] = None) -> bool:
+    """Wait until the git working tree is clean (no staged/unstaged changes).
+
+    If `timeout` or `poll_interval` are None the function will consult the
+    environment variables `GIT_PUSH_WAIT_TIMEOUT` and
+    `GIT_PUSH_POLL_INTERVAL`. Defaults: timeout=600s, poll_interval=2.0s.
+
+    Returns True when the working tree becomes clean within the timeout,
+    False on timeout or if git commands fail.
+    """
+    import time
+
+    timeout_env = os.environ.get("GIT_PUSH_WAIT_TIMEOUT")
+    poll_env = os.environ.get("GIT_PUSH_POLL_INTERVAL")
+
+    try:
+        timeout = int(timeout_env) if timeout is None and timeout_env is not None else (timeout if timeout is not None else 600)
+    except Exception:
+        timeout = 600
+
+    try:
+        poll = float(poll_env) if poll_interval is None and poll_env is not None else (poll_interval if poll_interval is not None else 2.0)
+    except Exception:
+        poll = 2.0
+
+    start = time.time()
+
+    def _working_tree_clean() -> bool:
+        try:
+            proc = _run(["git", "status", "--porcelain"], check=False)
+            out = (proc.stdout or "").strip()
+            return out == ""
+        except Exception:
+            return False
+
+    if _working_tree_clean():
+        return True
+
+    typer.secho("⏳ Detected staged or unstaged changes. Waiting for working tree to be clean before pushing...", fg=typer.colors.YELLOW)
+    while True:
+        if _working_tree_clean():
+            return True
+        if (time.time() - start) > timeout:
+            typer.secho(f"❌ Timeout waiting for working tree to be clean after {timeout} seconds.", fg=typer.colors.RED)
+            return False
+        time.sleep(poll)
+
+
 def _git_push() -> None:
     """Execute git push with proper error handling and user feedback."""
+
+    # Wait for a clean working tree (honors GIT_PUSH_WAIT_TIMEOUT and GIT_PUSH_POLL_INTERVAL)
+    if not _wait_for_clean_working_tree():
+        return
+
+    # Now perform push
     try:
         _run(["git", "push"])
         typer.secho("✅ Git push completed successfully", fg=typer.colors.GREEN)
