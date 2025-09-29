@@ -142,7 +142,8 @@ def _git_push() -> None:
     # Now perform push
     try:
         _run(["git", "push"])
-        typer.secho("✅ Git push completed successfully", fg=typer.colors.GREEN)
+        branch = _get_current_branch()
+        typer.secho(f"✅ Git push completed - {branch}", fg=typer.colors.GREEN)
     except subprocess.CalledProcessError as e:
         typer.secho(f"❌ Git push failed: {e}", fg=typer.colors.RED)
 
