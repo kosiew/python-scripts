@@ -2382,11 +2382,15 @@ def _get_current_branch() -> str:
         raise typer.Exit(1)
 
 
-def _template_replace_placeholder(template: str, placeholder: str = "{failures}") -> str:
+def _template_replace_placeholder(template: str, placeholder: str = "{failures}", max_lines: Optional[int] = None) -> str:
     """If `placeholder` appears in `template`, prompt the user to copy the
     intended replacement text to the clipboard (or paste via stdin), confirm,
     then substitute the clipboard contents for the placeholder and return the
     result.
+
+    If `max_lines` is provided (an int), the preview printed to the terminal
+    will be truncated to that many lines. If `max_lines` is None (the default),
+    the full content will be included in the substitution and preview.
 
     Behaviour mirrors other interactive helpers in this file: on cancellation
     or empty clipboard input the function will exit via typer.Exit(1).
@@ -2424,12 +2428,14 @@ def _template_replace_placeholder(template: str, placeholder: str = "{failures}"
         typer.secho(f"❌ No {placeholder} content found in clipboard/stdin.", fg=typer.colors.RED)
         raise typer.Exit(1)
 
-    # Perform the substitution and return
-    result = template.replace(placeholder, content)
-    # Print a short preview of the (possibly large) content to avoid flooding
-    # the terminal. The helper handles truncation and ellipses.
-    preview = _content_excerpt(content, max_lines=2)
-    typer.secho(f"✅ replaced {placeholder} with \n{preview}", fg=typer.colors.GREEN)
+    if max_lines is None:
+        preview = content
+    else:
+        preview = _content_excerpt(content, max_lines=max_lines)
+        typer.secho(f"💬 Preview of {placeholder} content (truncated to {max_lines} lines):", fg=typer.colors.CYAN)
+    result = template.replace(placeholder, preview)
+    message_preview = _content_excerpt(preview, max_lines=5)
+    typer.secho(f"✅ replaced {placeholder} with \n{message_preview}", fg=typer.colors.GREEN)
     return result
 
 
