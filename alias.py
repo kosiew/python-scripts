@@ -2300,7 +2300,7 @@ def _load_and_fill_template(prefix: str, pr_number: str, copy_hash: bool = False
     return filled
 
 
-def _load_and_fill_template2(template: str, placeholder: str = "{failures}") -> str:
+def _template_replace_placeholder(template: str, placeholder: str = "{failures}") -> str:
     """If `placeholder` appears in `template`, prompt the user to copy the
     intended replacement text to the clipboard (or paste via stdin), confirm,
     then substitute the clipboard contents for the placeholder and return the
@@ -2369,7 +2369,7 @@ def prwhy(pr_number: str = typer.Argument(..., help="PR number, e.g. 43197")) ->
     """Load prwhy file, substitute {hash}, call gcopyhash to copy the short hash,
     and copy the filled content to clipboard (or print)."""
     filled = _load_and_fill_template("prwhy", pr_number, copy_hash=True)
-    filled = _load_and_fill_template2(filled, '{failures}')
+    filled = _template_replace_placeholder(filled, '{failures}')
 
     # Try to copy to clipboard using shared helper; fallback to printing
     if _copy_text_to_clipboard(filled, label="prwhy content", pr_number=pr_number):
