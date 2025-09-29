@@ -84,6 +84,15 @@ def _extract_id(url: str) -> str:
     return url.rstrip("/").split("/")[-1]
 
 
+def _git_push() -> None:
+    """Execute git push with proper error handling and user feedback."""
+    try:
+        _run(["git", "push"])
+        typer.secho("✅ Git push completed successfully", fg=typer.colors.GREEN)
+    except subprocess.CalledProcessError as e:
+        typer.secho(f"❌ Git push failed: {e}", fg=typer.colors.RED)
+
+
 
 
 def _llm(flags: list[str], prompt: str, input_text: Optional[str] = None) -> str:
@@ -2199,8 +2208,13 @@ def reviewpr(pr_number: str = typer.Argument(..., help="PR number, e.g. 43197"))
 
     # Try to copy to clipboard using shared helper; fallback to printing
     if _copy_text_to_clipboard(filled, label="reviewpr content", pr_number=pr_number):
-        return
-    typer.echo(filled)
+        pass  # Content copied to clipboard successfully
+    else:
+        typer.echo(filled)  # Fallback to printing
+    
+    # Run git push at the end
+    _git_push()
+    
 
 
 def _get_template_from_clipboard_or_stdin(prefix: str, pr_number: str) -> str:
@@ -2390,8 +2404,12 @@ def prwhy(pr_number: str = typer.Argument(..., help="PR number, e.g. 43197")) ->
 
     # Try to copy to clipboard using shared helper; fallback to printing
     if _copy_text_to_clipboard(filled, label="prwhy content", pr_number=pr_number):
-        return
-    typer.echo(filled)
+        pass  # Content copied to clipboard successfully
+    else:
+        typer.echo(filled)  # Fallback to printing
+    
+    # Run git push at the end
+    _git_push()
 
 
 @app.command(help="Load ~/tmp/prrespond-<pr-number>.md, replace {hash} with short HEAD hash, call gcopyhash(), and copy to clipboard")
@@ -2403,8 +2421,12 @@ def prrespond(pr_number: str = typer.Argument(..., help="PR number, e.g. 43197")
 
     # Try to copy to clipboard using shared helper; fallback to printing
     if _copy_text_to_clipboard(filled, label="prrespond content", pr_number=pr_number):
-        return
-    typer.echo(filled)
+        pass  # Content copied to clipboard successfully
+    else:
+        typer.echo(filled)  # Fallback to printing
+    
+    # Run git push at the end
+    _git_push()
 
 
 @app.command(help="Copy current branch name to clipboard (gcopybranch)")
