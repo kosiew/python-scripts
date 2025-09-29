@@ -2300,6 +2300,54 @@ def _load_and_fill_template(prefix: str, pr_number: str, copy_hash: bool = False
     return filled
 
 
+def _load_and_fill_template2(template: str, placeholder: str = "{failures}") -> str:
+    """If `placeholder` appears in `template`, prompt the user to copy the
+    intended replacement text to the clipboard (or paste via stdin), confirm,
+    then substitute the clipboard contents for the placeholder and return the
+    result.
+
+    Behaviour mirrors other interactive helpers in this file: on cancellation
+    or empty clipboard input the function will exit via typer.Exit(1).
+    """
+    if placeholder not in template:
+        return template
+
+    typer.secho(f"📋 Please copy the {placeholder} text to your clipboard now.", fg=typer.colors.YELLOW, bold=True)
+    typer.secho(f"💡 Tip: copy the exact text you want substituted for {placeholder}, then confirm below.", fg=typer.colors.CYAN)
+    if not typer.confirm(f"👉 Have you copied the {placeholder} text to clipboard?", default=False):
+        typer.secho(f"❌ Cancelled: {placeholder} content not provided.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    content: str = ""
+    # Prefer reading from macOS clipboard when available
+    if _is_macos_with_pbcopy():
+        content = _read_from_clipboard()
+        if not content:
+            typer.secho(f"⚠️ Clipboard appears empty; please paste the {placeholder} text now and finish with Ctrl-D.", fg=typer.colors.YELLOW)
+            try:
+                typer.echo(f"Paste {placeholder} now, then press Ctrl-D:")
+                content = sys.stdin.read()
+            except Exception:
+                content = ""
+    else:
+        # Non-macOS or no pbcopy: ask user to paste into stdin
+        typer.secho(f"⚠️ Clipboard read not supported on this platform; please paste the {placeholder} text and press Ctrl-D.", fg=typer.colors.YELLOW)
+        try:
+            typer.echo(f"Paste {placeholder} now, then press Ctrl-D:")
+            content = sys.stdin.read()
+        except Exception:
+            content = ""
+
+    if not content:
+        typer.secho(f"❌ No {placeholder} content found in clipboard/stdin.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Perform the substitution and return
+    result = template.replace(placeholder, content)
+    typer.secho(f"✅ Inserted {content} (replaced {placeholder}).", fg=typer.colors.GREEN)
+    return result
+
+
 def _copy_text_to_clipboard(text: str, label: str = "content", pr_number: Optional[str] = None) -> bool:
     """Copy text to macOS clipboard using pbcopy. Returns True if copied.
 
@@ -2321,6 +2369,7 @@ def prwhy(pr_number: str = typer.Argument(..., help="PR number, e.g. 43197")) ->
     """Load prwhy file, substitute {hash}, call gcopyhash to copy the short hash,
     and copy the filled content to clipboard (or print)."""
     filled = _load_and_fill_template("prwhy", pr_number, copy_hash=True)
+    filled = _load_and_fill_template2(filled, '{failures}')
 
     # Try to copy to clipboard using shared helper; fallback to printing
     if _copy_text_to_clipboard(filled, label="prwhy content", pr_number=pr_number):
