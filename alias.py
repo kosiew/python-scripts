@@ -2344,7 +2344,10 @@ def _template_replace_placeholder(template: str, placeholder: str = "{failures}"
 
     # Perform the substitution and return
     result = template.replace(placeholder, content)
-    typer.secho(f"✅ Inserted {content} (replaced {placeholder}).", fg=typer.colors.GREEN)
+    # Print a short preview of the (possibly large) content to avoid flooding
+    # the terminal. The helper handles truncation and ellipses.
+    preview = _content_excerpt(content, max_lines=2)
+    typer.secho(f"✅ replaced {placeholder} with \n{preview}", fg=typer.colors.GREEN)
     return result
 
 
@@ -2362,6 +2365,20 @@ def _copy_text_to_clipboard(text: str, label: str = "content", pr_number: Option
     error_msg = "⚠️ Failed to copy to clipboard; printing output instead."
     
     return _copy_to_clipboard(text, success_msg, error_msg)
+
+
+def _content_excerpt(content: str, max_lines: int = 2) -> str:
+    """Return a short preview of `content` containing up to `max_lines` lines.
+
+    If the content has more lines than `max_lines`, the returned string will
+    have a trailing '\n...' to indicate truncation.
+    """
+    lines = content.splitlines()
+    preview_lines = lines[:max_lines]
+    preview = "\n".join(preview_lines)
+    if len(lines) > max_lines:
+        preview = f"{preview}\n..."
+    return preview
 
 
 @app.command(help="Load ~/tmp/prwhy-<pr-number>.md, replace {hash} with short HEAD hash, call gcopyhash(), and copy to clipboard")
