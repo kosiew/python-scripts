@@ -2368,6 +2368,19 @@ def _load_and_fill_template(prefix: str, pr_number: str, copy_hash: bool = False
     return filled
 
 
+def _get_current_branch() -> str:
+    """Return the current git branch name or exit with an error message.
+
+    Mirrors prior inline usage: prints an error and exits on failure.
+    """
+    typer.secho("🔍 Retrieving current branch name...", fg=typer.colors.CYAN)
+    try:
+        return _run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+    except Exception:
+        typer.secho("❌ Not a git repo or failed to get branch name.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+
 def _template_replace_placeholder(template: str, placeholder: str = "{failures}") -> str:
     """If `placeholder` appears in `template`, prompt the user to copy the
     intended replacement text to the clipboard (or paste via stdin), confirm,
@@ -2487,13 +2500,8 @@ def prrespond(pr_number: str = typer.Argument(..., help="PR number, e.g. 43197")
 def gcopybranch() -> None:
     """Copy the current branch name to macOS clipboard (pbcopy) or print it.
     """
-    typer.secho("🔍 Retrieving current branch name...", fg=typer.colors.CYAN)
-    try:
-        branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
-        typer.secho(f"✅ Current branch: {branch}", fg=typer.colors.GREEN)
-    except Exception:
-        typer.secho("❌ Not a git repo or failed to get branch name.", fg=typer.colors.RED)
-        raise typer.Exit(1)
+    branch = _get_current_branch()
+    typer.secho(f"✅ Current branch: {branch}", fg=typer.colors.GREEN)
 
     if not _copy_to_clipboard(branch, f"✅ Current branch name copied to clipboard: {branch}",
                              "⚠️ Failed to copy to clipboard; falling back to printing."):
