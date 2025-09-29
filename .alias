@@ -971,6 +971,7 @@ rpipe() {
 
 alias rmaturin="rpipe maturin develop --uv"
 alias rpytest="rpipe pytest --lf"
+alias rgotestsum="rpipe gotestsum ./..."
 
 # Squash commits from commit1..commit2 (inclusive) into a single commit.
 squash_commits() {
