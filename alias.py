@@ -2262,11 +2262,8 @@ def reviewpr(pr_number: str = typer.Argument(..., help="PR number, e.g. 43197"))
     filled = _load_and_fill_template("reviewpr", pr_number, copy_hash=False)
 
     # Try to copy to clipboard using shared helper; fallback to printing
-    if _copy_text_to_clipboard(filled, label="reviewpr content", pr_number=pr_number):
-        pass  # Content copied to clipboard successfully
-    else:
-        typer.echo(filled)  # Fallback to printing
-    
+    _copy_or_print(filled, label="reviewpr content", pr_number=pr_number)
+
     # Run git push at the end
     _git_push()
     
@@ -2455,6 +2452,18 @@ def _copy_text_to_clipboard(text: str, label: str = "content", pr_number: Option
     return _copy_to_clipboard(text, success_msg, error_msg)
 
 
+def _copy_or_print(text: str, label: str = "content", pr_number: Optional[str] = None) -> None:
+    """Try to copy `text` to the clipboard using the shared helper.
+
+    If the copy succeeds the function returns silently. If it fails,
+    print the text to stdout as a fallback. The `label` and `pr_number`
+    are forwarded to `_copy_text_to_clipboard` for consistent messages.
+    """
+    if _copy_text_to_clipboard(text, label=label, pr_number=pr_number):
+        return
+    typer.echo(text)
+
+
 def _content_excerpt(content: str, max_lines: int = 2) -> str:
     """Return a short preview of `content` containing up to `max_lines` lines.
 
@@ -2477,11 +2486,8 @@ def prwhy(pr_number: str = typer.Argument(..., help="PR number, e.g. 43197")) ->
     filled = _template_replace_placeholder(filled, '{failures}', max_lines=200)
 
     # Try to copy to clipboard using shared helper; fallback to printing
-    if _copy_text_to_clipboard(filled, label="prwhy content", pr_number=pr_number):
-        pass  # Content copied to clipboard successfully
-    else:
-        typer.echo(filled)  # Fallback to printing
-    
+    _copy_or_print(filled, label="prwhy content", pr_number=pr_number)
+
     # Run git push at the end
     _git_push()
 
@@ -2495,11 +2501,8 @@ def prrespond(pr_number: str = typer.Argument(..., help="PR number, e.g. 43197")
     filled = _template_replace_placeholder(filled, '{comments}', max_lines=200)
 
     # Try to copy to clipboard using shared helper; fallback to printing
-    if _copy_text_to_clipboard(filled, label="prrespond content", pr_number=pr_number):
-        pass  # Content copied to clipboard successfully
-    else:
-        typer.echo(filled)  # Fallback to printing
-    
+    _copy_or_print(filled, label="prrespond content", pr_number=pr_number)
+
     # Run git push at the end
     _git_push()
 
