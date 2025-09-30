@@ -2432,7 +2432,7 @@ def _template_replace_placeholder(template: str, placeholder: str = "{failures}"
         preview = content
     else:
         preview = _content_excerpt(content, max_lines=max_lines)
-        typer.secho(f"💬 Preview of {placeholder} content (truncated to {max_lines} lines):", fg=typer.colors.CYAN)
+        typer.secho(f"💬 {placeholder} content (truncated to {max_lines} lines):", fg=typer.colors.CYAN)
     result = template.replace(placeholder, preview)
     message_preview = _content_excerpt(preview, max_lines=5)
     typer.secho(f"✅ replaced {placeholder} with \n{message_preview}", fg=typer.colors.GREEN)
@@ -2474,7 +2474,7 @@ def prwhy(pr_number: str = typer.Argument(..., help="PR number, e.g. 43197")) ->
     """Load prwhy file, substitute {hash}, call gcopyhash to copy the short hash,
     and copy the filled content to clipboard (or print)."""
     filled = _load_and_fill_template("prwhy", pr_number, copy_hash=True)
-    filled = _template_replace_placeholder(filled, '{failures}')
+    filled = _template_replace_placeholder(filled, '{failures}', max_lines=200)
 
     # Try to copy to clipboard using shared helper; fallback to printing
     if _copy_text_to_clipboard(filled, label="prwhy content", pr_number=pr_number):
@@ -2492,6 +2492,7 @@ def prrespond(pr_number: str = typer.Argument(..., help="PR number, e.g. 43197")
     and copy the filled content to clipboard (or print).
     """
     filled = _load_and_fill_template("prrespond", pr_number, copy_hash=True)
+    filled = _template_replace_placeholder(filled, '{comments}', max_lines=200)
 
     # Try to copy to clipboard using shared helper; fallback to printing
     if _copy_text_to_clipboard(filled, label="prrespond content", pr_number=pr_number):
