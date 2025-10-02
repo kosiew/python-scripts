@@ -389,58 +389,15 @@ def craft_test(file_path: Path):
     """
     debug_print(f"==> craft_test called with file_path: {file_path}")
     try:
-        # Support multiple paths: either a file containing multiple lines or a single Path
-        cmds: list[str] = []
-
-        # If file_path refers to a file named '-' treat it as clipboard/multi-line input from stdin
-        raw_input = None
-        if str(file_path) == "-":
-            # Read from stdin for pasted multi-line paths
-            raw_input = sys.stdin.read()
-            debug_print("==> Read multi-path input from stdin")
-            paths = [line.strip() for line in raw_input.splitlines() if line.strip()]
+        ws, rel_to_ws = _get_workspace_and_relative_path(file_path)
+        crate_name, crate_root = _get_crate_info(file_path)
+        pkg_flag = f"-p {crate_name}"
+        parts = rel_to_ws.with_suffix('').parts
+        print(f"==> Path parts: {parts}")
+        if 'tests' in parts:
+            cmd = _find_integration_test_cmd(file_path, parts, crate_root, pkg_flag)
         else:
-            # Single path provided; but allow the path to point to a file containing multiple lines
-            # e.g., a temp file with multiple paths
-            p = Path(file_path)
-            if p.exists() and p.is_file():
-                # Try to detect if file contains multiple lines that look like paths
-                content = p.read_text(encoding='utf-8')
-                if "\n" in content:
-                    paths = [line.strip() for line in content.splitlines() if line.strip()]
-                else:
-                    paths = [str(p)]
-            else:
-                # Path may be relative/doesn't exist as file but is intended as source path
-                paths = [str(file_path)]
-
-        for p in paths:
-            fp = Path(p)
-            # Normalize relative paths against cwd
-            if not fp.is_absolute():
-                fp = Path(os.getcwd()) / fp
-
-            ws, rel_to_ws = _get_workspace_and_relative_path(fp)
-            crate_name, crate_root = _get_crate_info(fp)
-            pkg_flag = f"-p {crate_name}"
-            parts = rel_to_ws.with_suffix('').parts
-            debug_print(f"==> Path parts: {parts}")
-            if 'tests' in parts:
-                cmd = _find_integration_test_cmd(fp, parts, crate_root, pkg_flag)
-            else:
-                cmd = _find_unit_test_cmd(fp, crate_root, pkg_flag)
-            cmds.append(cmd)
-
-        # If multiple commands, produce a ctest variant joined by && and copy to clipboard
-        if len(cmds) == 1:
-            final_cmd = cmds[0]
-            _copy_ctest_variant_to_clipboard(final_cmd)
-            typer.echo(final_cmd)
-        else:
-            joined = ' && '.join(re.sub(r'^\s*cargo\s+test', 'ctest', c, count=1) for c in cmds)
-            # Copy the combined ctest chain to clipboard (or print fallback)
-            _copy_ctest_variant_to_clipboard(joined)
-            typer.echo(joined)
+            cmd = _find_unit_test_cmd(file_path, crate_root, pkg_flag)
         typer.echo(f"🔧 Test command:\n{cmd}")
         # Copy `ctest` variant to clipboard (extracted helper)
         _copy_ctest_variant_to_clipboard(cmd)
