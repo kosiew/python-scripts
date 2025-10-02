@@ -831,7 +831,7 @@ def clipboard_to_file(
 @app.command(help="Print commit hash(es) for PR number by grepping commit messages")
 def gprhash(pr: str = typer.Argument(..., help="PR number, e.g. 43197")):
     try:
-        out = _run(["git", "log", "--oneline", f"--grep=#{pr}"]).stdout.strip()
+        out = _run_git_command(["log", "--oneline", f"--grep=#{pr}"])
     except Exception:
         typer.secho("❌ Not a git repo or git error.", fg=typer.colors.RED)
         raise typer.Exit(1)
@@ -1935,7 +1935,7 @@ def greview_pr() -> None:
     """
     # Ensure we are NOT on main/master. greview_pr should be run on a PR branch.
     try:
-        branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+        branch = _run_git_command(["rev-parse", "--abbrev-ref", "HEAD"])
     except Exception:
         branch = None
 
@@ -1974,7 +1974,7 @@ def greview_pr() -> None:
     # Check if there are actually changes to commit
     typer.secho("🔍 Checking for changes to commit...", fg=typer.colors.CYAN)
     try:
-        staged_changes = _run(["git", "diff", "--cached", "--name-only"]).stdout.strip()
+        staged_changes = _run_git_command(["diff", "--cached", "--name-only"]).strip()
         if not staged_changes:
             typer.secho("⚠️ No changes to commit. The patch may have already been applied or resulted in no net changes.", fg=typer.colors.YELLOW)
             typer.secho("✅ Workflow completed (no commit needed).", fg=typer.colors.GREEN)
@@ -2051,7 +2051,7 @@ def gsquash(
         typer.secho(f"❌ {c1} is not an ancestor of {c2}.", fg=typer.colors.RED)
         raise typer.Exit(1)
 
-    orig_branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+    orig_branch = _run_git_command(["rev-parse", "--abbrev-ref", "HEAD"])
     target_branch = to or orig_branch
 
     typer.echo("🧹 Ensuring working tree and index are clean...")
@@ -2060,10 +2060,10 @@ def gsquash(
         typer.secho("❌ Working tree or index not clean. Commit/stash first.", fg=typer.colors.RED)
         raise typer.Exit(1)
 
-    sha_head = _run(["git", "rev-parse", "HEAD"]).stdout.strip()
-    sha_c2 = _run(["git", "rev-parse", c2]).stdout.strip()
+    sha_head = _run_git_command(["rev-parse", "HEAD"])
+    sha_c2 = _run_git_command(["rev-parse", c2])
     if sha_head != sha_c2:
-        short = _run(["git", "rev-parse", "--short", c2]).stdout.strip()
+        short = _run_git_command(["rev-parse", "--short", c2])
         tmp_branch = f"squash-{short}"
         typer.secho(f"ℹ️  Creating temp branch {tmp_branch} at {c2}…", fg=typer.colors.CYAN)
         try:
@@ -2073,7 +2073,7 @@ def gsquash(
             typer.secho("❌ Failed to switch to temp branch.", fg=typer.colors.RED)
             raise typer.Exit(1)
     else:
-        tmp_branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+        tmp_branch = _run_git_command(["rev-parse", "--abbrev-ref", "HEAD"])
         typer.secho(f"ℹ️  Using current branch as temp: {tmp_branch}", fg=typer.colors.CYAN)
 
     # Count commits
@@ -2111,7 +2111,7 @@ def gsquash(
         typer.secho("❌ Commit failed.", fg=typer.colors.RED)
         raise typer.Exit(1)
 
-    squashed_sha = _run(["git", "rev-parse", "HEAD"]).stdout.strip()
+    squashed_sha = _run_git_command(["rev-parse", "HEAD"])
     typer.secho(f"✅ Created squashed commit: {squashed_sha}", fg=typer.colors.GREEN)
 
     # apply back to target branch
@@ -2123,7 +2123,7 @@ def gsquash(
     # Does target contain c2?
     if _run(["git", "merge-base", "--is-ancestor", c2, f"refs/heads/{target_branch}"], check=False).returncode == 0:
         # Target contains c2
-        _cur_target_sha = _run(["git", "rev-parse", target_branch]).stdout.strip()
+        _cur_target_sha = _run_git_command(["rev-parse", target_branch])
         if _cur_target_sha == sha_c2:
             typer.secho(f"🔁 Moving {target_branch} to squashed commit (replacing {c2})…", fg=typer.colors.CYAN)
             _run(["git", "switch", target_branch])
@@ -2150,7 +2150,7 @@ def gsquash(
             if _run(["git", "diff", "--cached", "--quiet"], check=False).returncode == 0 and _run(["git", "diff", "--quiet"], check=False).returncode == 0:
                 typer.secho("⚠️ Cherry-pick produced no changes. Creating an empty commit to preserve history.", fg=typer.colors.YELLOW)
                 # Get original message
-                orig_msg = _run(["git", "log", "-1", "--pretty=%B", squashed_sha]).stdout.strip()
+                orig_msg = _run_git_command(["log", "-1", "--pretty=%B", squashed_sha])
                 _run(["git", "commit", "--allow-empty", "-m", orig_msg])
                 typer.secho("✅ Empty commit created.", fg=typer.colors.GREEN)
             else:
@@ -2177,7 +2177,7 @@ def gsquash(
         typer.secho(f"🧹 Deleted temp branch {tmp_branch}.", fg=typer.colors.GREEN)
 
     # Return user to target (or original if same)
-    cur = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+    cur = _run_git_command(["rev-parse", "--abbrev-ref", "HEAD"])
     if target_branch != cur:
         _run(["git", "switch", target_branch], check=False)
 
@@ -2226,7 +2226,7 @@ def gcommit_cmd(message: Optional[str] = typer.Argument(None, help="Commit messa
     if not msg:
         typer.echo("🧠 Generating commit message from staged changes...")
         try:
-            staged = _run(["git", "diff", "--staged"]).stdout
+            staged = _run_git_command(["diff", "--staged"]).splitlines()
         except Exception:
             staged = ""
 
@@ -2301,7 +2301,7 @@ def gtest(commit_point: Optional[str] = typer.Argument(None, help="Commit point 
     cp = commit_point or "HEAD"
 
     try:
-        current_branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+        current_branch = _run_git_command(["rev-parse", "--abbrev-ref", "HEAD"])
     except Exception:
         typer.secho("❌ Not a git repository.", fg=typer.colors.RED)
         raise typer.Exit(1)
@@ -2334,7 +2334,7 @@ def gcopyhash() -> None:
     """
     typer.secho("🔍 Retrieving short HEAD commit hash...", fg=typer.colors.CYAN)
     try:
-        short_hash = _run(["git", "rev-parse", "--short", "HEAD"]).stdout.strip()
+        short_hash = _run_git_command(["rev-parse", "--short", "HEAD"])
         typer.secho(f"✅ Found hash: {short_hash}", fg=typer.colors.GREEN)
     except Exception:
         typer.secho("❌ Not a git repo or failed to get HEAD hash.", fg=typer.colors.RED)
@@ -2429,7 +2429,7 @@ def _load_and_fill_template(prefix: str, pr_number: str, copy_hash: bool = False
             raise typer.Exit(1)
 
     try:
-        short_hash = _run(["git", "rev-parse", "--short", "HEAD"]).stdout.strip()
+        short_hash = _run_git_command(["rev-parse", "--short", "HEAD"])
     except Exception:
         short_hash = ""
 
@@ -2464,7 +2464,7 @@ def _get_current_branch() -> str:
     """
     typer.secho("🔍 Retrieving current branch name...", fg=typer.colors.CYAN)
     try:
-        return _run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+        return _run_git_command(["rev-parse", "--abbrev-ref", "HEAD"])
     except Exception:
         typer.secho("❌ Not a git repo or failed to get branch name.", fg=typer.colors.RED)
         raise typer.Exit(1)
@@ -2632,13 +2632,13 @@ def _ensure_clean_index_or_exit() -> None:
 
 
 def _get_head_and_prev() -> tuple[str, str]:
-    sha_head = _run(["git", "rev-parse", "HEAD"]).stdout.strip()
-    sha_prev = _run(["git", "rev-parse", "HEAD~1"]).stdout.strip()
+    sha_head = _run_git_command(["rev-parse", "HEAD"])
+    sha_prev = _run_git_command(["rev-parse", "HEAD~1"])
     return sha_head, sha_prev
 
 
 def _get_commit_message(sha: str) -> str:
-    return _run(["git", "log", "-1", "--pretty=%B", sha]).stdout or ""
+    return _run_git_command(["log", "-1", "--pretty=%B", sha]) or ""
 
 
 def _create_branch(branch: str) -> None:
@@ -2688,7 +2688,7 @@ def swapmsgs(
     msg_head = _get_commit_message(sha_head)
     msg_prev = _get_commit_message(sha_prev)
 
-    cur_branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+    cur_branch = _run_git_command(["rev-parse", "--abbrev-ref", "HEAD"])
     backup_branch = f"swapmsgs-backup-{_nowstamp()}"
     tmp_branch = f"swapmsgs-tmp-{_nowstamp()}"
 
@@ -2756,7 +2756,7 @@ def _handle_apply_failure(proc: subprocess.CompletedProcess, patch_path: Path) -
     """
     # Get repository root for manual apply suggestion
     try:
-        root = _run(["git", "rev-parse", "--show-toplevel"]).stdout.strip()
+        root = _run_git_command(["rev-parse", "--show-toplevel"])
     except Exception:
         root = "."
     
@@ -3033,7 +3033,7 @@ def gappdiff(dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Check 
 
     # Determine repo root
     try:
-        root = _run(["git", "rev-parse", "--show-toplevel"]).stdout.strip()
+        root = _run_git_command(["rev-parse", "--show-toplevel"])
     except Exception:
         typer.secho("❌ Repo root not found; ensure you're inside a git repo.", fg=typer.colors.RED)
         raise typer.Exit(1)
@@ -3318,7 +3318,7 @@ def gsign(
 
     # Refuse to start if rebase/merge in progress
     try:
-        git_dir = _run(["git", "rev-parse", "--git-dir"]).stdout.strip()
+        git_dir = _run_git_command(["rev-parse", "--git-dir"])
     except Exception:
         git_dir = ""
 
@@ -3344,7 +3344,7 @@ def gsign(
         branch = "HEAD"
 
     try:
-        cur_branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+        cur_branch = _run_git_command(["rev-parse", "--abbrev-ref", "HEAD"])
     except Exception:
         cur_branch = "HEAD"
 
