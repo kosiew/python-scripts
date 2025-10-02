@@ -363,9 +363,21 @@ def _copy_ctest_variant_to_clipboard(cmd: str) -> None:
     """
     Create a `ctest`-prefixed variant of `cmd` and attempt to copy it to the macOS clipboard.
     On non-mac platforms print the ctest variant instead.
+    Handles multiple commands joined with &&.
     """
     try:
-        ctest_cmd = re.sub(r'^\s*cargo\s+test', 'ctest', cmd, count=1)
+        # Handle multiple commands joined with &&
+        if ' && ' in cmd:
+            parts = cmd.split(' && ')
+            ctest_parts = []
+            for part in parts:
+                part = part.strip()
+                ctest_part = re.sub(r'^\s*cargo\s+test', 'ctest', part, count=1)
+                ctest_parts.append(ctest_part)
+            ctest_cmd = ' && '.join(ctest_parts)
+        else:
+            ctest_cmd = re.sub(r'^\s*cargo\s+test', 'ctest', cmd, count=1)
+        
         # Prefer pbcopy on macOS
         if sys.platform == 'darwin' and shutil.which('pbcopy'):
             subprocess.run(['pbcopy'], input=ctest_cmd.encode('utf-8'), check=False)
@@ -381,26 +393,114 @@ def _copy_ctest_variant_to_clipboard(cmd: str) -> None:
     except Exception as e:
         typer.echo(f"⚠️ Could not copy to clipboard: {e}")
 
+def _read_clipboard_content() -> str:
+    """
+    Read content from clipboard on macOS. Returns empty string if unable to read.
+    """
+    try:
+        if sys.platform == 'darwin' and shutil.which('pbpaste'):
+            result = subprocess.run(['pbpaste'], capture_output=True, text=True, check=False)
+            return result.stdout if result.returncode == 0 else ""
+        elif sys.platform == 'darwin':
+            # Fallback to osascript if pbpaste missing
+            result = subprocess.run(['osascript', '-e', 'the clipboard'], 
+                                   capture_output=True, text=True, check=False)
+            return result.stdout.strip() if result.returncode == 0 else ""
+        else:
+            return ""
+    except Exception:
+        return ""
+
+
+def _parse_file_paths(file_path_input: str) -> list[Path]:
+    """
+    Parse file path input which can be either a single path or multiple paths.
+    Returns a list of Path objects.
+    """
+    # Check if the input string contains multiple paths (newline separated)
+    if '\n' in file_path_input:
+        lines = [line.strip() for line in file_path_input.split('\n') if line.strip()]
+        return [Path(line) for line in lines]
+    
+    # Single path case
+    return [Path(file_path_input)]
+
+
+def _craft_single_test_command(file_path: Path) -> str:
+    """
+    Generate a test command for a single file path.
+    Returns the command string.
+    """
+    debug_print(f"==> Processing single file: {file_path}")
+    
+    ws, rel_to_ws = _get_workspace_and_relative_path(file_path)
+    crate_name, crate_root = _get_crate_info(file_path)
+    pkg_flag = f"-p {crate_name}"
+    parts = rel_to_ws.with_suffix('').parts
+    debug_print(f"==> Path parts: {parts}")
+    
+    if 'tests' in parts:
+        return _find_integration_test_cmd(file_path, parts, crate_root, pkg_flag)
+    else:
+        return _find_unit_test_cmd(file_path, crate_root, pkg_flag)
+
+
 @app.command()
-def craft_test(file_path: Path):
+def craft_test(
+    file_path: Path = typer.Argument(..., help="File path or use 'clipboard' to read multiple paths from clipboard"),
+    use_clipboard: bool = typer.Option(False, "--clipboard", "-c", help="Read multiple file paths from clipboard")
+):
     """
     Craft a `cargo test -p <package> --test <testfile>` command to run tests in the specified Rust source file.
     It scans the entire `tests/` directory for `mod <module>;` declarations.
+    
+    Can handle multiple file paths from clipboard when --clipboard flag is used or when 'clipboard' is passed as file_path.
+    Multiple commands will be joined with &&.
     """
-    debug_print(f"==> craft_test called with file_path: {file_path}")
+    debug_print(f"==> craft_test called with file_path: {file_path}, use_clipboard: {use_clipboard}")
     try:
-        ws, rel_to_ws = _get_workspace_and_relative_path(file_path)
-        crate_name, crate_root = _get_crate_info(file_path)
-        pkg_flag = f"-p {crate_name}"
-        parts = rel_to_ws.with_suffix('').parts
-        print(f"==> Path parts: {parts}")
-        if 'tests' in parts:
-            cmd = _find_integration_test_cmd(file_path, parts, crate_root, pkg_flag)
+        # Determine if we should read from clipboard
+        should_use_clipboard = use_clipboard or str(file_path).lower() == 'clipboard'
+        
+        if should_use_clipboard:
+            # Read from clipboard
+            clipboard_content = _read_clipboard_content()
+            if not clipboard_content:
+                typer.echo("❌ No content found in clipboard")
+                raise typer.Exit(1)
+            
+            file_paths = _parse_file_paths(clipboard_content)
+            if len(file_paths) <= 1:
+                typer.echo("⚠️ Expected multiple paths in clipboard, but found only one or none")
         else:
-            cmd = _find_unit_test_cmd(file_path, crate_root, pkg_flag)
-        typer.echo(f"🔧 Test command:\n{cmd}")
-        # Copy `ctest` variant to clipboard (extracted helper)
-        _copy_ctest_variant_to_clipboard(cmd)
+            # Parse input to handle multiple paths from argument
+            file_paths = _parse_file_paths(str(file_path))
+        
+        if len(file_paths) == 1:
+            # Single file case - existing behavior
+            cmd = _craft_single_test_command(file_paths[0])
+            typer.echo(f"🔧 Test command:\n{cmd}")
+            _copy_ctest_variant_to_clipboard(cmd)
+        else:
+            # Multiple files case - generate commands and join with &&
+            typer.echo(f"📋 Processing {len(file_paths)} files...")
+            commands = []
+            for fp in file_paths:
+                try:
+                    cmd = _craft_single_test_command(fp)
+                    commands.append(cmd)
+                    typer.echo(f"✅ {fp}: {cmd}")
+                except Exception as e:
+                    typer.echo(f"⚠️ Failed to generate command for {fp}: {e}")
+            
+            if commands:
+                combined_cmd = " && ".join(commands)
+                typer.echo(f"\n🔗 Combined test command:\n{combined_cmd}")
+                _copy_ctest_variant_to_clipboard(combined_cmd)
+                typer.echo(f"📋 Generated {len(commands)} test commands")
+            else:
+                typer.echo("❌ No valid test commands generated")
+                raise typer.Exit(1)
     except ValueError as e:
         if "not in the subpath" in str(e):
             abs_file = file_path.resolve()
