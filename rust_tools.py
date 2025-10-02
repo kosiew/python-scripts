@@ -476,6 +476,21 @@ def craft_test(
             # Parse input to handle multiple paths from argument
             file_paths = _parse_file_paths(str(file_path))
         
+        # Remove duplicate paths while preserving order
+        seen = set()
+        deduped_file_paths: list[Path] = []
+        for p in file_paths:
+            # Normalize path string to avoid duplicates due to minor differences
+            key = str(p)
+            if key not in seen:
+                seen.add(key)
+                deduped_file_paths.append(p)
+        file_paths = deduped_file_paths
+
+        if len(file_paths) == 0:
+            typer.echo("❌ No file paths provided after deduplication")
+            raise typer.Exit(1)
+
         if len(file_paths) == 1:
             # Single file case - existing behavior
             cmd = _craft_single_test_command(file_paths[0])
