@@ -418,7 +418,9 @@ grevdiff() {
   run_alias_py grevdiff "$@"
 }
 
- 
+true_merge_base() {
+  run_alias_py true_merge_base "$@"
+}
 
 gadded() {
   run_alias_py gadded "$1"
