@@ -353,7 +353,7 @@ def _git_merge_base(branch: Optional[str] = None) -> Optional[str]:
         return None
 
 
-def run_git_command(args):
+def _run_git_command(args):
     """Run a git command and return its stripped stdout as text.
 
     This thin wrapper uses subprocess.check_output and decodes the result to
@@ -375,15 +375,15 @@ def get_true_merge_base(branch_a, branch_b):
     """
     try:
         # Get list of commits only in A, but not in B (first-parent traversal)
-        only_in_a = run_git_command([
+        only_in_a = _run_git_command([
             "rev-list", "--first-parent", f"{branch_a}", f"^{branch_b}"
         ]).splitlines()
     except subprocess.CalledProcessError:
         # If the command fails for any reason, fall back to standard merge-base
-        return run_git_command(["merge-base", branch_a, branch_b])
+        return _run_git_command(["merge-base", branch_a, branch_b])
 
     for commit in reversed(only_in_a):
-        parts = run_git_command(["rev-list", "--parents", "-n", "1", commit]).split()
+        parts = _run_git_command(["rev-list", "--parents", "-n", "1", commit]).split()
         if len(parts) >= 2:
             # This is a merge commit; check merged parents
             merged_parents = parts[1:]
@@ -402,7 +402,7 @@ def get_true_merge_base(branch_a, branch_b):
             continue
 
     # Fall back to standard merge-base if nothing else found
-    return run_git_command(["merge-base", branch_a, branch_b])
+    return _run_git_command(["merge-base", branch_a, branch_b])
 
 # -------------------------
 # Filename & summaries
@@ -732,6 +732,31 @@ def gen_filename(
 def summary(url: str = typer.Argument(..., help="GitHub issue/PR URL")):
     s = _gen_summary_from_issue(url)
     typer.echo(s or "(Summary could not be auto-generated. Replace with 3–6 concise bullets.)")
+
+
+@app.command(name="true_merge_base", help="Find a 'true' merge-base between two branches")
+def cli_true_merge_base(
+    branch_a: str = typer.Argument("HEAD", help="Branch or ref A (default: HEAD)"),
+    branch_b: Optional[str] = typer.Option(None, "--branch-b", "-b", help="Branch or ref B (default: detected main)"),
+):
+    """CLI wrapper around get_true_merge_base.
+
+    If branch_b is not provided, attempt to detect the repository main branch
+    using _git_main_branch() and fall back to 'main'. Prints the merge-base
+    commit hash on success or exits with a non-zero code on failure.
+    """
+    target_b = branch_b or _git_main_branch() or "main"
+    try:
+        mb = get_true_merge_base(branch_a, target_b)
+    except Exception as e:
+        typer.secho(f"❌ Error while computing merge-base: {e}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    if not mb:
+        typer.secho("❌ Merge-base not found.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    typer.echo(mb)
 
 
 @app.command("issue-to-file", help="Run LLM over issue context with a prompt → file (like _process_issue)")
@@ -1908,6 +1933,20 @@ def greview_pr() -> None:
     4. Push changes to remote
     5. Copy commit hash to clipboard
     """
+    # Ensure we are NOT on main/master. greview_pr should be run on a PR branch.
+    try:
+        branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+    except Exception:
+        branch = None
+
+    if branch and branch in ("main", "master"):
+        typer.secho(
+            f"❌ Refusing to run greview_pr on the '{branch}' branch. Switch to your PR/feature branch first.",
+            fg=typer.colors.RED,
+            bold=True,
+        )
+        raise typer.Exit(1)
+
     # Step 1: Wait for confirmation that PR diff has been copied
     typer.secho("📋 Please copy the PR diff to your clipboard first.", fg=typer.colors.YELLOW, bold=True)
     typer.secho("💡 Tip: You can use the browser to copy the diff from GitHub PR page.", fg=typer.colors.CYAN)
