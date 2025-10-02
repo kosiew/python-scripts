@@ -352,6 +352,58 @@ def _git_merge_base(branch: Optional[str] = None) -> Optional[str]:
     except Exception:
         return None
 
+
+def run_git_command(args):
+    """Run a git command and return its stripped stdout as text.
+
+    This thin wrapper uses subprocess.check_output and decodes the result to
+    a string, matching the small helper used in other scripts.
+    """
+    return subprocess.check_output(['git'] + args).decode().strip()
+
+
+def get_true_merge_base(branch_a, branch_b):
+    """Find a 'true' merge-base between two branches.
+
+    This function inspects commits that are on `branch_a` (following the
+    first-parent history) but not on `branch_b`. It walks those commits in
+    reverse (oldest first) looking for merge commits and examines their
+    merged parents. If one of the merged parents is an ancestor of
+    `branch_b`, that parent is likely the true point where the branches
+    diverged and is returned. If nothing is found, fall back to
+    `git merge-base`.
+    """
+    try:
+        # Get list of commits only in A, but not in B (first-parent traversal)
+        only_in_a = run_git_command([
+            "rev-list", "--first-parent", f"{branch_a}", f"^{branch_b}"
+        ]).splitlines()
+    except subprocess.CalledProcessError:
+        # If the command fails for any reason, fall back to standard merge-base
+        return run_git_command(["merge-base", branch_a, branch_b])
+
+    for commit in reversed(only_in_a):
+        parts = run_git_command(["rev-list", "--parents", "-n", "1", commit]).split()
+        if len(parts) >= 2:
+            # This is a merge commit; check merged parents
+            merged_parents = parts[1:]
+            for p in merged_parents:
+                try:
+                    # `git merge-base --is-ancestor` returns exit code 0 when p is
+                    # an ancestor of branch_b. Use subprocess.call to inspect exit
+                    # code without raising.
+                    rc = subprocess.call(["git", "merge-base", "--is-ancestor", p, branch_b])
+                    if rc == 0:
+                        return p
+                except Exception:
+                    # Ignore and continue searching
+                    continue
+        else:
+            continue
+
+    # Fall back to standard merge-base if nothing else found
+    return run_git_command(["merge-base", branch_a, branch_b])
+
 # -------------------------
 # Filename & summaries
 # -------------------------
