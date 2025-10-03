@@ -461,6 +461,66 @@ def _matches_pattern(msg: str, pattern: str) -> bool:
     except re.error:
         return pattern in msg
 
+
+def _select_start_sha_from_commits(commits_list: List[tuple[str, str]], pat: str, want_match: bool) -> Optional[str]:
+    """Select the start SHA from a list of (sha, msg) tuples.
+
+    Behavior mirrors previous inline logic used in `_resolve_start_short`:
+    - If want_match is True: return the first (earliest) commit whose
+      message matches `pat`.
+    - If want_match is False: find the last index of a matching commit
+      and return the commit immediately after it (if any). If there are
+      no matches, return the first non-matching commit (oldest).
+    """
+    if want_match:
+        for s, m in commits_list:
+            if _matches_pattern(m, pat):
+                return s
+        return None
+
+    # want_match is False: find last matching index
+    last_idx = -1
+    for i, (_s, m) in enumerate(commits_list):
+        if _matches_pattern(m, pat):
+            last_idx = i
+
+    if last_idx != -1:
+        after = last_idx + 1
+        if after < len(commits_list):
+            return commits_list[after][0]
+        return None
+
+    # No matches at all: pick first non-matching commit (oldest)
+    for s, m in commits_list:
+        if not _matches_pattern(m, pat):
+            return s
+    return None
+
+
+def _get_start_sha_from_repo_range(pattern: str, match: bool, repo: Optional[str] = None) -> Optional[str]:
+    """Compute start SHA for a repo by finding merge-base^..HEAD and selecting
+    the appropriate commit using `_select_start_sha_from_commits`.
+
+    Returns the full SHA string or None on failure.
+    """
+    # Determine merge-base (respect repo param)
+    if repo:
+        target_branch = _get_target_branch_in_repo(repo)
+        mb = get_true_merge_base("HEAD", target_branch)
+    else:
+        mb = _git_merge_base()
+
+    if not mb:
+        return None
+
+    rng = f"{mb}^..HEAD"
+    commits = _read_commits_range(rng, repo_path=repo)
+    if not commits:
+        return None
+
+    # Use module-level helper to select the start SHA
+    return _select_start_sha_from_commits(commits, pattern, match)
+
 # -------------------------
 # Filename & summaries
 # -------------------------
@@ -588,40 +648,8 @@ def _resolve_start_short(short_hash: str, pattern: str = "UNPICK", match: bool =
         if not mb:
             return ""
 
-        rng = f"{mb}^..HEAD"
-        commits = _read_commits_range(rng, repo_path=repo)
-        if not commits:
-            return ""
-
-        start_sha_full: Optional[str] = None
-
-        if match:
-            # Return first commit matching the pattern
-            for sha, msg in commits:
-                if _matches_pattern(msg, pattern):
-                    start_sha_full = sha
-                    break
-        else:
-            # Find last matching index
-            last_match_idx = -1
-            for i, (_sha, msg) in enumerate(commits):
-                if _matches_pattern(msg, pattern):
-                    last_match_idx = i
-
-            if last_match_idx != -1:
-                after_idx = last_match_idx + 1
-                if after_idx < len(commits):
-                    start_sha_full = commits[after_idx][0]
-                else:
-                    # no commit after last match
-                    start_sha_full = None
-            else:
-                # No matches at all: pick first non-matching commit (oldest)
-                for sha, msg in commits:
-                    if not _matches_pattern(msg, pattern):
-                        start_sha_full = sha
-                        break
-
+        # Delegate merge-base + commit-range selection to helper
+        start_sha_full = _get_start_sha_from_repo_range(pattern, match, repo)
         if not start_sha_full:
             return ""
 
