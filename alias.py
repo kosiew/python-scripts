@@ -2226,9 +2226,15 @@ def gcommit_cmd(message: Optional[str] = typer.Argument(None, help="Commit messa
     if not msg:
         typer.echo("🧠 Generating commit message from staged changes...")
         try:
-            staged = _run_git_command(["diff", "--staged"]).splitlines()
+            staged = _run_git_command(["diff", "--staged"]) or ""
         except Exception:
             staged = ""
+
+        # _run_git_command may return a string; older code used splitlines() which
+        # produced a list. Ensure we always have a single string before calling
+        # .strip() or passing it to the LLM.
+        if isinstance(staged, list):
+            staged = "\n".join(staged)
 
         if staged.strip():
             generated = _llm(["-s", "Generate a clear, conventional commit message for these staged changes"], staged)
