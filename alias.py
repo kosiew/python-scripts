@@ -361,6 +361,17 @@ def _run_git_command(args):
     """
     return subprocess.check_output(['git'] + args).decode().strip()
 
+
+def _short_head_hash() -> str:
+    """Return the short HEAD commit hash (like `git rev-parse --short HEAD`).
+
+    Returns an empty string on any error.
+    """
+    try:
+        return _run_git_command(["rev-parse", "--short", "HEAD"])
+    except Exception:
+        return ""
+
 # branch_b typically main/master
 def get_true_merge_base(branch_a, branch_b):
     """Find a 'true' merge-base between two branches.
@@ -643,7 +654,7 @@ def _resolve_start_short(pattern: str = "UNPICK", match: bool = False, repo: Opt
         # Determine desired truncation length by querying git for the
         # short HEAD representation (like gcopyhash does).
         try:
-            short_hash = _run_git_command(["rev-parse", "--short", "HEAD"])
+            short_hash = _short_head_hash()
             trunc_len = len(short_hash) if short_hash else SHORT_HASH_LENGTH
         except Exception:
             trunc_len = SHORT_HASH_LENGTH
@@ -2391,7 +2402,7 @@ def gcopyhash() -> None:
     """
     typer.secho("🔍 Retrieving short HEAD commit hash...", fg=typer.colors.CYAN)
     try:
-        short_hash = _run_git_command(["rev-parse", "--short", "HEAD"])
+        short_hash = _short_head_hash()
         typer.secho(f"✅ Found hash: {short_hash}", fg=typer.colors.GREEN)
     except Exception:
         typer.secho("❌ Not a git repo or failed to get HEAD hash.", fg=typer.colors.RED)
@@ -2486,7 +2497,7 @@ def _load_and_fill_template(suffix: str, pr_number: str, copy_hash: bool = False
             raise typer.Exit(1)
 
     try:
-        short_hash = _run_git_command(["rev-parse", "--short", "HEAD"])
+        short_hash = _short_head_hash()
     except Exception:
         short_hash = ""
 
