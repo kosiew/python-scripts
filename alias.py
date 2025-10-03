@@ -404,6 +404,63 @@ def get_true_merge_base(branch_a, branch_b):
     # Fall back to standard merge-base if nothing else found
     return _run_git_command(["merge-base", branch_a, branch_b])
 
+
+# Module-level helpers used by _resolve_start_short
+def _get_target_branch_in_repo(repo_path: str) -> str:
+    """Determine target branch name inside a given repo path.
+
+    Preference order: local 'main'/'master', origin/HEAD, or 'remote show origin' parsing.
+    Returns a branch name (defaults to 'main').
+    """
+    target_branch = None
+    for name in ("main", "master"):
+        proc = _run(["git", "show-ref", f"refs/heads/{name}"], check=False, cwd=repo_path)
+        if proc.returncode == 0:
+            target_branch = name
+            break
+    if not target_branch:
+        proc = _run(["git", "rev-parse", "--abbrev-ref", "origin/HEAD"], check=False, cwd=repo_path)
+        out = (proc.stdout or "").strip()
+        if out and out != "origin/HEAD":
+            target_branch = out.split("/")[-1]
+        else:
+            proc = _run(["git", "remote", "show", "origin"], check=False, cwd=repo_path)
+            m = re.search(r"HEAD branch: (\S+)", proc.stdout or "")
+            if m:
+                target_branch = m.group(1)
+    return target_branch or "main"
+
+
+def _read_commits_range(rng: str, repo_path: Optional[str] = None) -> List[tuple[str, str]]:
+    """Read commits in range `rng` returning list of (sha, message) ordered oldest->newest."""
+    if repo_path:
+        proc = _run(["git", "log", "--reverse", "--pretty=format:%H%x00%s", rng], check=False, cwd=repo_path)
+    else:
+        proc = _run(["git", "log", "--reverse", "--pretty=format:%H%x00%s", rng], check=False)
+    out = (proc.stdout or "").strip()
+    if not out:
+        return []
+    commits_out: List[tuple[str, str]] = []
+    for line in out.splitlines():
+        if not line:
+            continue
+        if "\x00" in line:
+            sha, msg = line.split("\x00", 1)
+        else:
+            parts = line.split(None, 1)
+            sha = parts[0]
+            msg = parts[1] if len(parts) > 1 else ""
+        commits_out.append((sha, msg))
+    return commits_out
+
+
+def _matches_pattern(msg: str, pattern: str) -> bool:
+    """Return True if msg matches pattern as regex, or substring fallback on invalid regex."""
+    try:
+        return bool(re.search(pattern, msg))
+    except re.error:
+        return pattern in msg
+
 # -------------------------
 # Filename & summaries
 # -------------------------
@@ -521,29 +578,9 @@ def _resolve_start_short(short_hash: str, pattern: str = "UNPICK", match: bool =
     any failure or if no commit found.
     """
     try:
-        # If a repo path is given, run git commands within that directory so
-        # callers can resolve START against a different repository than the
-        # current working directory.
+        # Determine merge-base (respect repo param)
         if repo:
-            # Determine main branch name in the target repo (prefer local main/master)
-            target_branch = None
-            for name in ("main", "master"):
-                proc = _run(["git", "show-ref", f"refs/heads/{name}"], check=False, cwd=repo)
-                if proc.returncode == 0:
-                    target_branch = name
-                    break
-            if not target_branch:
-                proc = _run(["git", "rev-parse", "--abbrev-ref", "origin/HEAD"], check=False, cwd=repo)
-                out = (proc.stdout or "").strip()
-                if out and out != "origin/HEAD":
-                    target_branch = out.split("/")[-1]
-                else:
-                    proc = _run(["git", "remote", "show", "origin"], check=False, cwd=repo)
-                    m = re.search(r"HEAD branch: (\S+)", proc.stdout or "")
-                    if m:
-                        target_branch = m.group(1)
-
-            target_branch = target_branch or "main"
+            target_branch = _get_target_branch_in_repo(repo)
             mb = get_true_merge_base("HEAD", target_branch)
         else:
             mb = _git_merge_base()
@@ -551,67 +588,46 @@ def _resolve_start_short(short_hash: str, pattern: str = "UNPICK", match: bool =
         if not mb:
             return ""
 
-        # Get the full ordered list of commits in the range mb^..HEAD
         rng = f"{mb}^..HEAD"
-        if repo:
-            proc = _run(["git", "log", "--reverse", "--pretty=format:%H%x00%s", rng], check=False, cwd=repo)
-        else:
-            proc = _run(["git", "log", "--reverse", "--pretty=format:%H%x00%s", rng], check=False)
-        out = (proc.stdout or "").strip()
-        if not out:
+        commits = _read_commits_range(rng, repo_path=repo)
+        if not commits:
             return ""
 
-        commits: List[tuple[str, str]] = []
-        for line in out.splitlines():
-            if not line:
-                continue
-            if "\x00" in line:
-                sha, msg = line.split("\x00", 1)
-            else:
-                parts = line.split(None, 1)
-                sha = parts[0]
-                msg = parts[1] if len(parts) > 1 else ""
-            commits.append((sha, msg))
-
-        # Helper to test match (regex with fallback)
-        def _matches(msg: str) -> bool:
-            try:
-                return bool(re.search(pattern, msg))
-            except re.error:
-                return pattern in msg
+        start_sha_full: Optional[str] = None
 
         if match:
-            # If caller asked to match, return the first matching commit
+            # Return first commit matching the pattern
             for sha, msg in commits:
-                if _matches(msg):
-                    start_sha = sha
-                    trunc_len = len(short_hash) if short_hash else SHORT_HASH_LENGTH
-                    return start_sha[:trunc_len]
+                if _matches_pattern(msg, pattern):
+                    start_sha_full = sha
+                    break
+        else:
+            # Find last matching index
+            last_match_idx = -1
+            for i, (_sha, msg) in enumerate(commits):
+                if _matches_pattern(msg, pattern):
+                    last_match_idx = i
+
+            if last_match_idx != -1:
+                after_idx = last_match_idx + 1
+                if after_idx < len(commits):
+                    start_sha_full = commits[after_idx][0]
+                else:
+                    # no commit after last match
+                    start_sha_full = None
+            else:
+                # No matches at all: pick first non-matching commit (oldest)
+                for sha, msg in commits:
+                    if not _matches_pattern(msg, pattern):
+                        start_sha_full = sha
+                        break
+
+        if not start_sha_full:
             return ""
 
-        # match == False: prefer the first non-matching commit AFTER the last match
-        last_match_idx = -1
-        for i, (_sha, msg) in enumerate(commits):
-            if _matches(msg):
-                last_match_idx = i
-
-        # If there was at least one match, pick the commit immediately after it
-        if last_match_idx != -1:
-            after_idx = last_match_idx + 1
-            if after_idx < len(commits):
-                start_sha = commits[after_idx][0]
-                trunc_len = len(short_hash) if short_hash else SHORT_HASH_LENGTH
-                return start_sha[:trunc_len]
-            # No commit after the last match
-            return ""
-
-        # No matches found: return the first non-matching commit (oldest)
-        for sha, msg in commits:
-            if not _matches(msg):
-                trunc_len = len(short_hash) if short_hash else SHORT_HASH_LENGTH
-                return sha[:trunc_len]
-
-        return ""
+        # Truncate exactly once at the end of the function
+        trunc_len = len(short_hash) if short_hash else SHORT_HASH_LENGTH
+        return start_sha_full[:trunc_len]
     except Exception:
         return ""
 
