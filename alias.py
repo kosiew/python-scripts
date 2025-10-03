@@ -361,7 +361,7 @@ def _run_git_command(args):
     """
     return subprocess.check_output(['git'] + args).decode().strip()
 
-
+# branch_b typically main/master
 def get_true_merge_base(branch_a, branch_b):
     """Find a 'true' merge-base between two branches.
 
@@ -544,8 +544,7 @@ def _resolve_start_short(short_hash: str, pattern: str = "UNPICK", match: bool =
                         target_branch = m.group(1)
 
             target_branch = target_branch or "main"
-            proc = _run(["git", "merge-base", "HEAD", target_branch], check=False, cwd=repo)
-            mb = (proc.stdout or "").strip()
+            mb = get_true_merge_base("HEAD", target_branch)
         else:
             mb = _git_merge_base()
 
