@@ -651,14 +651,6 @@ def _resolve_start_short(pattern: str = "UNPICK", match: bool = False, repo: Opt
     Returns an empty string on failure or if no commit found.
     """
     try:
-        # Determine desired truncation length by querying git for the
-        # short HEAD representation (like gcopyhash does).
-        try:
-            short_hash = _short_head_hash()
-            trunc_len = len(short_hash) if short_hash else SHORT_HASH_LENGTH
-        except Exception:
-            trunc_len = SHORT_HASH_LENGTH
-
         # Determine merge-base (respect repo param)
         if repo:
             target_branch = _get_target_branch_in_repo(repo)
@@ -674,6 +666,13 @@ def _resolve_start_short(pattern: str = "UNPICK", match: bool = False, repo: Opt
         if not start_sha_full:
             return ""
 
+        # Determine desired truncation length by querying git for the
+        # short HEAD representation (like gcopyhash does).
+        try:
+            short_hash = _short_head_hash()
+            trunc_len = len(short_hash) if short_hash else SHORT_HASH_LENGTH
+        except Exception:
+            trunc_len = SHORT_HASH_LENGTH
         return start_sha_full[:trunc_len]
     except Exception:
         return ""
