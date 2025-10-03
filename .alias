@@ -300,6 +300,7 @@ alias gco="git checkout \"\$(git branch | sed 's/^..//' | fzf)\""
 # alias gsm="git checkout main && gsync && g cob"
 
 alias gcphash="gcopyhash"
+alias gcpstarthash="gcopystarthash"
 alias gcpbranch="gcopybranch"
 
 gsm() {
@@ -381,6 +382,10 @@ gcommit() {
 # copy HEAD commit hash
 gcopyhash() {
   run_alias_py gcopyhash "$@"
+}
+
+gcopystarthash() {
+  run_alias_py gcopystarthash "$@"
 }
  
 gcopybranch() {

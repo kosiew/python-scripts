@@ -791,7 +791,7 @@ def gen_filename(
     typer.echo(str(path))
 
 
-@app.command(name="get-start-hash", help="Resolve {START} to a truncated commit sha (wraps internal helper)")
+@app.command(name="gcopystarthash", help="Resolve {START} to a truncated commit sha (wraps internal helper)")
 def cli_get_start_hash(
     pattern: str = typer.Option("UNPICK", "--pattern", "-p", help="Commit message pattern to match/not-match (default: UNPICK)"),
     match: bool = typer.Option(False, "--match", help="Whether to select a matching commit (default: False selects first non-matching commit after last match)"),
@@ -804,6 +804,7 @@ def cli_get_start_hash(
     """
     try:
         start = _get_start_hash(pattern, match, repo)
+        typer.secho(f"🧭 Resolved start hash: {start}", fg=typer.colors.CYAN)
     except Exception as exc:
         typer.secho(f"❌ Error resolving start hash: {exc}", fg=typer.colors.RED)
         raise typer.Exit(1)
@@ -812,8 +813,8 @@ def cli_get_start_hash(
         typer.secho("❌ Start hash not found or no commits in range.", fg=typer.colors.RED)
         raise typer.Exit(1)
 
-    typer.echo(start)
-
+    _copy_to_clipboard(start, success_msg="📋 Start hash copied to clipboard!", error_msg="⚠️ Failed to copy start hash to clipboard.")
+    
 @app.command(help="Summarize a GitHub issue into concise bullets")
 def summary(url: str = typer.Argument(..., help="GitHub issue/PR URL")):
     s = _gen_summary_from_issue(url)
