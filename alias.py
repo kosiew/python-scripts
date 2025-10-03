@@ -2413,19 +2413,19 @@ def _get_template_from_clipboard_or_stdin(prefix: str, pr_number: str) -> str:
     return text
 
 
-def _load_and_fill_template(prefix: str, pr_number: str, copy_hash: bool = False) -> str:
+def _load_and_fill_template(suffix: str, pr_number: str, copy_hash: bool = False) -> str:
     """Helper to load ~/tmp/<prefix>-<pr_number>.md, replace {hash} with the
     short HEAD commit hash, optionally copy the short hash to the clipboard
     (via gcopyhash()), and return the filled text.
 
     prefix: 'reviewpr' or 'prwhy' etc.
     """
-    p = Path.home() / "tmp" / f"{prefix}-{pr_number}.md"
+    p = Path.home() / "tmp" / f"{pr_number}-{suffix}.md"
 
     text: Optional[str] = None
     if not p.exists():
         # Prompt the user to copy the template and read it from clipboard or stdin
-        text = _get_template_from_clipboard_or_stdin(prefix, pr_number)
+        text = _get_template_from_clipboard_or_stdin(suffix, pr_number)
     else:
         try:
             text = p.read_text(encoding="utf-8")
