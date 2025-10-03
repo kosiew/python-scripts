@@ -653,13 +653,14 @@ def _truncate_hash(sha: str) -> str:
         trunc_len = len(short_hash) if short_hash else SHORT_HASH_LENGTH
     except Exception:
         trunc_len = SHORT_HASH_LENGTH
-        
-    return sha[:trunc_len] if len(sha) > length else sha
 
-def _resolve_start_short(pattern: str = "UNPICK", match: bool = False, repo: Optional[str] = None) -> str:
+    # If sha is shorter than trunc_len, return it unchanged
+    return sha[:trunc_len] if len(sha) > trunc_len else sha
+
+def _get_start_hash(pattern: str = "UNPICK", match: bool = False, repo: Optional[str] = None) -> str:
     """Resolve the `{START}` placeholder to a truncated commit sha.
 
-    This variant obtains the desired short-hash length from the repo by
+    This private helper obtains the desired short-hash length from the repo by
     running `git rev-parse --short HEAD` (matching the behavior of
     `gcopyhash` / `_load_and_fill_template`) and truncates the resolved
     start SHA to that length. If unable to determine the short length,
@@ -788,6 +789,30 @@ def gen_filename(
 ):
     path = _gen_filename(id, title_source, prefix)
     typer.echo(str(path))
+
+
+@app.command(name="get-start-hash", help="Resolve {START} to a truncated commit sha (wraps internal helper)")
+def cli_get_start_hash(
+    pattern: str = typer.Option("UNPICK", "--pattern", "-p", help="Commit message pattern to match/not-match (default: UNPICK)"),
+    match: bool = typer.Option(False, "--match", help="Whether to select a matching commit (default: False selects first non-matching commit after last match)"),
+    repo: Optional[str] = typer.Option(None, "--repo", help="Optional repository path to operate in"),
+) -> None:
+    """Print the truncated start SHA resolved by the helper.
+
+    Returns exit code 0 and prints the short sha on success. Exits with
+    non-zero status if resolution fails.
+    """
+    try:
+        start = _get_start_hash(pattern, match, repo)
+    except Exception as exc:
+        typer.secho(f"❌ Error resolving start hash: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    if not start:
+        typer.secho("❌ Start hash not found or no commits in range.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    typer.echo(start)
 
 @app.command(help="Summarize a GitHub issue into concise bullets")
 def summary(url: str = typer.Argument(..., help="GitHub issue/PR URL")):
@@ -2508,7 +2533,7 @@ def _load_and_fill_template(suffix: str, pr_number: str, copy_hash: bool = False
     # `short_hash` (fall back to SHORT_HASH_LENGTH when short_hash is empty).
     if "{START}" in text:
         # Use extracted helper to resolve the truncated start sha (defaults preserve previous behavior)
-        start_short = _resolve_start_short("UNPICK", False)
+        start_short = _get_start_hash("UNPICK", False)
         if start_short:
             filled = filled.replace("{START}", start_short)
             typer.secho(f"✅ Resolved {{START}} to commit: {start_short}", fg=typer.colors.GREEN)
