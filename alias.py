@@ -668,16 +668,6 @@ def _resolve_start_short(pattern: str = "UNPICK", match: bool = False, repo: Opt
     Returns an empty string on failure or if no commit found.
     """
     try:
-        # Determine merge-base (respect repo param)
-        if repo:
-            target_branch = _get_target_branch_in_repo(repo)
-            mb = get_true_merge_base("HEAD", target_branch)
-        else:
-            mb = _git_merge_base()
-
-        if not mb:
-            return ""
-
         # Delegate merge-base + commit-range selection to helper
         start_sha_full = _get_start_sha_from_repo_range(pattern, match, repo)
         if not start_sha_full:
