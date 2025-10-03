@@ -628,16 +628,26 @@ def _get_first_commit(start_hash: str, pattern: str, match: bool) -> CommitResul
     return CommitResult(None, None)
 
 
-def _resolve_start_short(short_hash: str, pattern: str = "UNPICK", match: bool = False, repo: Optional[str] = None) -> str:
+def _resolve_start_short(pattern: str = "UNPICK", match: bool = False, repo: Optional[str] = None) -> str:
     """Resolve the `{START}` placeholder to a truncated commit sha.
 
-    Finds the merge-base between HEAD and main (via `_git_merge_base`), then
-    locates the first commit in `merge-base^..HEAD` whose message does NOT
-    contain 'UNPICK'. Returns the truncated sha (to the length of `short_hash`
-    or `SHORT_HASH_LENGTH` if `short_hash` is empty). Returns empty string on
-    any failure or if no commit found.
+    This variant obtains the desired short-hash length from the repo by
+    running `git rev-parse --short HEAD` (matching the behavior of
+    `gcopyhash` / `_load_and_fill_template`) and truncates the resolved
+    start SHA to that length. If unable to determine the short length,
+    falls back to `SHORT_HASH_LENGTH`.
+
+    Returns an empty string on failure or if no commit found.
     """
     try:
+        # Determine desired truncation length by querying git for the
+        # short HEAD representation (like gcopyhash does).
+        try:
+            short_hash = _run_git_command(["rev-parse", "--short", "HEAD"])
+            trunc_len = len(short_hash) if short_hash else SHORT_HASH_LENGTH
+        except Exception:
+            trunc_len = SHORT_HASH_LENGTH
+
         # Determine merge-base (respect repo param)
         if repo:
             target_branch = _get_target_branch_in_repo(repo)
@@ -653,8 +663,6 @@ def _resolve_start_short(short_hash: str, pattern: str = "UNPICK", match: bool =
         if not start_sha_full:
             return ""
 
-        # Truncate exactly once at the end of the function
-        trunc_len = len(short_hash) if short_hash else SHORT_HASH_LENGTH
         return start_sha_full[:trunc_len]
     except Exception:
         return ""
@@ -2490,7 +2498,7 @@ def _load_and_fill_template(suffix: str, pr_number: str, copy_hash: bool = False
     # `short_hash` (fall back to SHORT_HASH_LENGTH when short_hash is empty).
     if "{START}" in text:
         # Use extracted helper to resolve the truncated start sha (defaults preserve previous behavior)
-        start_short = _resolve_start_short(short_hash, "UNPICK", False)
+        start_short = _resolve_start_short("UNPICK", False)
         if start_short:
             filled = filled.replace("{START}", start_short)
             typer.secho(f"✅ Resolved {{START}} to commit: {start_short}", fg=typer.colors.GREEN)
