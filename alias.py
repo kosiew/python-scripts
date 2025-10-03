@@ -638,6 +638,23 @@ def _get_first_commit(start_hash: str, pattern: str, match: bool) -> CommitResul
 
     return CommitResult(None, None)
 
+def _truncate_hash(sha: str) -> str:
+    """Truncate a full commit SHA 
+
+    If the SHA is shorter than the desired length, returns it unchanged.
+    """
+    if not sha:
+        return ""
+    
+    # Determine desired truncation length by querying git for the
+    # short HEAD representation (like gcopyhash does).
+    try:
+        short_hash = _short_head_hash()
+        trunc_len = len(short_hash) if short_hash else SHORT_HASH_LENGTH
+    except Exception:
+        trunc_len = SHORT_HASH_LENGTH
+        
+    return sha[:trunc_len] if len(sha) > length else sha
 
 def _resolve_start_short(pattern: str = "UNPICK", match: bool = False, repo: Optional[str] = None) -> str:
     """Resolve the `{START}` placeholder to a truncated commit sha.
@@ -666,14 +683,7 @@ def _resolve_start_short(pattern: str = "UNPICK", match: bool = False, repo: Opt
         if not start_sha_full:
             return ""
 
-        # Determine desired truncation length by querying git for the
-        # short HEAD representation (like gcopyhash does).
-        try:
-            short_hash = _short_head_hash()
-            trunc_len = len(short_hash) if short_hash else SHORT_HASH_LENGTH
-        except Exception:
-            trunc_len = SHORT_HASH_LENGTH
-        return start_sha_full[:trunc_len]
+        return _truncate_hash(start_sha_full)
     except Exception:
         return ""
 
