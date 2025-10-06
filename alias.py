@@ -850,8 +850,8 @@ def cli_true_merge_base(
         typer.secho("❌ Merge-base not found.", fg=typer.colors.RED)
         raise typer.Exit(1)
 
-    typer.echo(mb)
-
+    truncated_mb = _truncate_hash(mb)
+    _copy_to_clipboard(mb, success_msg=f"📋 Merge-base {truncated_mb} copied to clipboard!", error_msg="⚠️ Failed to copy merge-base hash to clipboard.")
 
 @app.command("issue-to-file", help="Run LLM over issue context with a prompt → file (like _process_issue)")
 def issue_to_file(
