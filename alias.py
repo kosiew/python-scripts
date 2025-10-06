@@ -2476,7 +2476,7 @@ def _get_template_from_clipboard_or_stdin(prefix: str, pr_number: str) -> str:
         if text:
             # attempt to persist the clipboard content so subsequent runs find the file
             try:
-                p = Path.home() / "tmp" / f"{prefix}-{pr_number}.md"
+                p = Path.home() / "tmp" / f"{pr-number}-{prefix}.md"
                 p.parent.mkdir(parents=True, exist_ok=True)
                 p.write_text(text, encoding="utf-8")
                 typer.secho(f"✅ Saved template to: {p}", fg=typer.colors.GREEN)
