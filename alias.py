@@ -483,12 +483,10 @@ def _matches_pattern(msg: str, pattern: str) -> bool:
 def _select_start_sha_from_commits(commits_list: List[tuple[str, str]], pat: str, want_match: bool) -> Optional[str]:
     """Select the start SHA from a list of (sha, msg) tuples.
 
-    Behavior mirrors previous inline logic used in `_resolve_start_short`:
     - If want_match is True: return the first (earliest) commit whose
       message matches `pat`.
-    - If want_match is False: find the last index of a matching commit
-      and return the commit immediately after it (if any). If there are
-      no matches, return the first non-matching commit (oldest).
+    - If want_match is False: return the first commit (oldest) whose
+      message does NOT match `pat`.
     """
     if want_match:
         for s, m in commits_list:
@@ -496,19 +494,7 @@ def _select_start_sha_from_commits(commits_list: List[tuple[str, str]], pat: str
                 return s
         return None
 
-    # want_match is False: find last matching index
-    last_idx = -1
-    for i, (_s, m) in enumerate(commits_list):
-        if _matches_pattern(m, pat):
-            last_idx = i
-
-    if last_idx != -1:
-        after = last_idx + 1
-        if after < len(commits_list):
-            return commits_list[after][0]
-        return None
-
-    # No matches at all: pick first non-matching commit (oldest)
+    # want_match is False: find first non-matching commit
     for s, m in commits_list:
         if not _matches_pattern(m, pat):
             return s
