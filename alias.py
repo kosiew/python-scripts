@@ -502,7 +502,7 @@ def _select_start_sha_from_commits(commits_list: List[tuple[str, str]], pat: str
 
 
 def _get_start_sha_from_repo_range(pattern: str, match: bool, repo: Optional[str] = None) -> Optional[str]:
-    """Compute start SHA for a repo by finding merge-base^..HEAD and selecting
+    """Compute start SHA for a repo by finding merge-base..HEAD and selecting
     the appropriate commit using `_select_start_sha_from_commits`.
 
     Returns the full SHA string or None on failure.
@@ -517,7 +517,7 @@ def _get_start_sha_from_repo_range(pattern: str, match: bool, repo: Optional[str
     if not mb:
         return None
 
-    rng = f"{mb}^..HEAD"
+    rng = f"{mb}..HEAD"
     commits = _read_commits_range(rng, repo_path=repo)
     if not commits:
         return None
