@@ -42,13 +42,16 @@ def parse_benchmark_report(benchmark_dir: Path) -> dict:
         soup = load_html_file(report_file)
         if not soup:
             return None
-
-        print(f"==> Successfully parsed HTML for {benchmark_dir.name}")
+        # Try to extract a human-readable benchmark name from the report HTML
+        display_name = extract_benchmark_display_name(soup, fallback=benchmark_dir.name)
+        print(f"==> Successfully parsed HTML for {benchmark_dir.name} (display name: {display_name})")
 
         # Extract performance data from the HTML
         data = extract_performance_data(soup)
-        print(f"==> Extracted data: {data}")
-        return data
+        print(f"==> Extracted data for '{display_name}': {data}")
+
+        # Return both display name and parsed data so callers can use the human-readable name
+        return {"name": display_name, "data": data}
 
     except Exception as e:
         print(f"==> Error parsing report: {e}")
@@ -86,6 +89,38 @@ def extract_performance_data(soup) -> dict:
         data["median"] = data["mean"].copy()
 
     return data
+
+
+def extract_benchmark_display_name(soup, fallback: str = None) -> str:
+    """Attempt to extract a human-readable benchmark name from the report HTML.
+
+    Fallback to the directory name if no suitable title is found.
+    """
+    # Try common places: h1, h2, <title>
+    try:
+        h1 = soup.find("h1")
+        if h1 and h1.text.strip():
+            return h1.text.strip()
+
+        h2 = soup.find("h2")
+        if h2 and h2.text.strip():
+            return h2.text.strip()
+
+        if soup.title and soup.title.string:
+            title = soup.title.string.strip()
+            if title:
+                return title
+
+        # Some reports include a header or element with a class indicating the bench name
+        header = soup.select_one(".bench, .benchmark, .report-title, .title")
+        if header and getattr(header, "text", "").strip():
+            return header.text.strip()
+
+    except Exception:
+        # Be defensive; if parsing fails, fall back
+        pass
+
+    return fallback
 
 
 def process_table(table, data: dict):
@@ -206,21 +241,24 @@ def collect_benchmark_results(benchmark_dirs, threshold, p_value_threshold):
 
     for benchmark_dir in benchmark_dirs:
         print(f"\n==> Processing benchmark: {benchmark_dir.name}")
-        data = parse_benchmark_report(benchmark_dir)
-        if not data:
+        parsed = parse_benchmark_report(benchmark_dir)
+        if not parsed or "data" not in parsed:
             print(f"==> No data found for {benchmark_dir.name}")
             continue
 
+        display_name = parsed.get("name", benchmark_dir.name)
+        data = parsed.get("data")
+
         change_data = get_benchmark_change(data)
         if not change_data:
-            print(f"==> No valid change data for {benchmark_dir.name}")
+            print(f"==> No valid change data for {display_name} ({benchmark_dir.name})")
             continue
 
         print(
-            f"==> Checking threshold: abs({change_data['mean_pct']:.2f}) >= {threshold} = {abs(change_data['mean_pct']) >= threshold}"
+            f"==> Checking threshold for '{display_name}': abs({change_data['mean_pct']:.2f}) >= {threshold} = {abs(change_data['mean_pct']) >= threshold}"
         )
         print(
-            f"==> Checking p-value: {change_data['mean_p_value']} < {p_value_threshold} = {change_data['mean_p_value'] < p_value_threshold}"
+            f"==> Checking p-value for '{display_name}': {change_data['mean_p_value']} < {p_value_threshold} = {change_data['mean_p_value'] < p_value_threshold}"
         )
 
         # Only include changes above threshold AND statistically significant
@@ -228,19 +266,19 @@ def collect_benchmark_results(benchmark_dirs, threshold, p_value_threshold):
             abs(change_data["mean_pct"]) >= threshold
             and change_data["mean_p_value"] < p_value_threshold
         ):
-            print(f"==> INCLUDED: Benchmark '{benchmark_dir.name}' meets criteria")
+            print(f"==> INCLUDED: Benchmark '{display_name}' ({benchmark_dir.name}) meets criteria")
 
+            # Store both display name and dir name in the displayed benchmark name
+            combined_name = f"{display_name} ({benchmark_dir.name})" if display_name != benchmark_dir.name else display_name
             result = (
-                benchmark_dir.name,
+                combined_name,
                 change_data["mean_pct"],
                 change_data["mean_p_value"],
                 change_data["median_pct"],
             )
             results.append(result)
         else:
-            print(
-                f"==> EXCLUDED: Benchmark '{benchmark_dir.name}' doesn't meet criteria"
-            )
+            print(f"==> EXCLUDED: Benchmark '{display_name}' ({benchmark_dir.name}) doesn't meet criteria")
 
     return results
 
