@@ -235,17 +235,30 @@ def format_percentage(value: float) -> str:
         return f"[red]+{value:.2f}%[/red]"  # Regression
 
 
-def collect_benchmark_results(benchmark_dirs, threshold, p_value_threshold):
-    """Collect and filter benchmark results that meet significance criteria."""
+def collect_benchmark_results(benchmark_dirs, threshold, p_value_threshold, use_dirname: bool = False, exclude_list: Optional[List[str]] = None):
+    """Collect and filter benchmark results that meet significance criteria.
+
+    Args:
+        benchmark_dirs: iterable of Path objects to benchmark folders
+        threshold: minimum absolute percent change to include
+        p_value_threshold: maximum p-value to include
+        use_dirname: if True, prefer the filesystem directory name instead of HTML display title
+        exclude_list: list of substrings; if any appears in a dir name, that dir will be skipped
+    """
     results = []
+    exclude_list = exclude_list or []
 
     for benchmark_dir in benchmark_dirs:
+        # Skip excluded directories by substring
+        if any(sub for sub in exclude_list if sub and sub in benchmark_dir.name):
+            print(f"==> SKIP (excluded): {benchmark_dir.name}")
+            continue
+
         print(f"\n==> Processing benchmark: {benchmark_dir.name}")
         parsed = parse_benchmark_report(benchmark_dir)
         if not parsed or "data" not in parsed:
             print(f"==> No data found for {benchmark_dir.name}")
             continue
-
         display_name = parsed.get("name", benchmark_dir.name)
         data = parsed.get("data")
 
@@ -266,12 +279,20 @@ def collect_benchmark_results(benchmark_dirs, threshold, p_value_threshold):
             abs(change_data["mean_pct"]) >= threshold
             and change_data["mean_p_value"] < p_value_threshold
         ):
-            print(f"==> INCLUDED: Benchmark '{display_name}' ({benchmark_dir.name}) meets criteria")
+            # Decide what name to show based on use_dirname flag; still append dir for traceability if different
+            if use_dirname:
+                display_to_show = benchmark_dir.name
+            else:
+                display_to_show = display_name
 
-            # Store both display name and dir name in the displayed benchmark name
-            combined_name = f"{display_name} ({benchmark_dir.name})" if display_name != benchmark_dir.name else display_name
+            # If the HTML display name differs, append directory name in parens for traceability
+            if display_to_show != benchmark_dir.name:
+                display_to_show = f"{display_to_show} ({benchmark_dir.name})"
+
+            print(f"==> INCLUDED: Benchmark '{display_to_show}' meets criteria")
+
             result = (
-                combined_name,
+                display_to_show,
                 change_data["mean_pct"],
                 change_data["mean_p_value"],
                 change_data["median_pct"],
@@ -364,6 +385,16 @@ def analyze(
         "-p",
         help="P-value threshold for statistical significance (default: 0.05)",
     ),
+    use_dirname: bool = typer.Option(
+        False,
+        "--use-dirname",
+        help="Prefer filesystem directory names over HTML display titles",
+    ),
+    exclude: Optional[str] = typer.Option(
+        None,
+        "--exclude",
+        help="Comma-separated list of substrings; directories containing any will be skipped",
+    ),
 ):
     """Analyze Criterion benchmark results and summarize improvements and regressions. First run 'cargo bench' with --save-baseline base on baseline branch, then 'cargo bench' with --baseline base on the feature branch.
     This command will parse the benchmark reports and generate a summary of changes.
@@ -385,8 +416,13 @@ def analyze(
         d for d in criterion_dir.iterdir() if d.is_dir() and d.name != "report"
     ]
 
+    # Parse exclude list
+    exclude_list = [s.strip() for s in exclude.split(",")] if exclude else []
+
     # Collect and filter benchmark results
-    results = collect_benchmark_results(benchmark_dirs, threshold, p_value_threshold)
+    results = collect_benchmark_results(
+        benchmark_dirs, threshold, p_value_threshold, use_dirname=use_dirname, exclude_list=exclude_list
+    )
 
     # Group results into improvements and regressions
     improvements = [r for r in results if r[1] < 0]  # negative percentage = improvement
