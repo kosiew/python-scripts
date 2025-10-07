@@ -149,18 +149,28 @@ def get_benchmark_change(data: dict) -> dict:
         print(f"==> Invalid data format in get_benchmark_change")
         return None
 
+    # Safely access mean and median dictionaries
+    mean = data.get("mean", {})
+    median = data.get("median", {})
+
+    # point_estimate is required for the comparison; if missing for mean, we can't proceed
+    mean_pe = mean.get("point_estimate")
+    if mean_pe is None:
+        print("==> Missing 'point_estimate' for mean — skipping this benchmark")
+        return None
+
+    # If median point estimate is missing, fall back to mean's point estimate
+    median_pe = median.get("point_estimate", mean_pe)
+
     result = {
-        "mean_change": data["mean"]["point_estimate"],
-        "mean_pct": data["mean"]["point_estimate"] * 100,
-        "mean_p_value": data["mean"].get(
-            "p_value", 1.0
-        ),  # Default to 1.0 if not present
-        "median_change": data["median"]["point_estimate"],
-        "median_pct": data["median"]["point_estimate"] * 100,
-        "median_p_value": data["median"].get(
-            "p_value", 1.0
-        ),  # Default to 1.0 if not present
+        "mean_change": mean_pe,
+        "mean_pct": mean_pe * 100,
+        "mean_p_value": mean.get("p_value", 1.0),
+        "median_change": median_pe,
+        "median_pct": median_pe * 100,
+        "median_p_value": median.get("p_value", mean.get("p_value", 1.0)),
     }
+
     print(
         f"==> Extracted change data: mean_pct={result['mean_pct']:.2f}%, p_value={result['mean_p_value']}"
     )
