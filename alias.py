@@ -685,7 +685,68 @@ def _render_and_write(issue_id: str, url: str, prefix: str, tpl_text: str, summa
 
     if not no_open:
         _open_in_editor(outpath, editor)
-    return outpath
+
+
+@app.command("clip-to-commit", help="Convert clipboard content to a git commit message using local llm and copy to clipboard")
+def clip_to_commit(
+    copy: bool = typer.Option(True, "--copy/--no-copy", help="Copy the generated message to clipboard (default: True)"),
+    subject_only: bool = typer.Option(True, "--subject-only/--full", help="Generate subject only (default) or subject + body"),
+) -> None:
+    """Generate a git commit message from the macOS clipboard using the local `llm` CLI.
+
+    The command reads the clipboard (requires macOS `pbpaste`), sends the clipboard
+    content to `llm` with a short prompt asking for a concise commit message, unwraps
+    any fenced code in the response, prints the resulting message, and optionally
+    copies it back to the clipboard.
+    """
+    _ensure_macos_with_pbpaste()
+
+    if not _which("llm"):
+        typer.secho("❌ 'llm' not found in PATH.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    clip = _read_from_clipboard()
+    if not clip or not clip.strip():
+        typer.secho("❌ Clipboard is empty.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # Build prompt for commit message generation
+    if subject_only:
+        prompt = (
+            "Generate a single-line git commit subject in imperative mood, max 50 characters, "
+            "no trailing period. Summarize the change concisely based on the input."
+        )
+    else:
+        prompt = (
+            "Generate a git commit message: one-line subject (imperative, max 50 chars), "
+            "blank line, then a short body wrapped at ~72 chars. Do not include code fences."
+        )
+
+    try:
+        # Prefer the helper which can pass input_text; fall back to direct llm run if empty
+        out = _llm(["-s"], prompt, input_text=clip)
+        if not out:
+            proc = _run(["llm", prompt], input=clip)
+            out = proc.stdout or ""
+
+        out = _unwrap_fenced(out).strip()
+        if not out:
+            typer.secho("❌ LLM returned an empty commit message.", fg=typer.colors.RED)
+            raise typer.Exit(1)
+    except Exception:
+        typer.secho("❌ LLM generation failed.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    # If only subject requested, take the first non-empty line
+    lines = [l for l in out.splitlines() if l.strip()]
+    commit_msg = lines[0] if subject_only and lines else out
+
+    # Print the generated message and optionally copy to clipboard
+    typer.echo(commit_msg)
+    if copy:
+        copied = _copy_to_clipboard(commit_msg, success_msg="📋 Commit message copied to clipboard!", error_msg="⚠️ Failed to copy commit message.")
+        if not copied:
+            typer.secho("⚠️ Could not copy to clipboard; the message was printed above.", fg=typer.colors.YELLOW)
 
 
 def _get_git_branch() -> str:
