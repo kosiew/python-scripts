@@ -378,6 +378,50 @@ def _short_head_hash() -> str:
         typer.secho("⚠️ Unable to determine short HEAD hash.", fg=typer.colors.YELLOW)
         return ""
 
+
+@app.command("copy-range", help="Copy the range '{START}^..{HEAD}' to the clipboard (uses short HEAD by default). If START is omitted, try resolving from repository context.")
+def copy_range(start: Optional[str] = typer.Argument(None, help="Start commit hash (can be full or short). If omitted, resolve from repo using {START} rules."), short: bool = typer.Option(True, "--short", "-s", help="Use short HEAD hash (git rev-parse --short HEAD)")) -> None:
+    """Compose the range string from START and HEAD and copy it to the clipboard.
+
+    Behavior:
+    - If on macOS with pbcopy available, copy to clipboard and print a confirmation.
+    - Otherwise, print the composed range to stdout.
+    """
+    # If start wasn't provided, try to resolve it from repo using existing helper
+    if not start:
+        start = _get_start_hash()
+        if not start:
+            typer.secho("⚠️ Could not resolve {START} automatically; please provide a start hash.", fg=typer.colors.RED)
+            raise typer.Exit(1)
+
+    # Determine HEAD hash (short or full)
+    head_hash = ""
+    try:
+        if short:
+            head_hash = _run_git_command(["rev-parse", "--short", "HEAD"]) or ""
+        else:
+            head_hash = _run_git_command(["rev-parse", "HEAD"]) or ""
+    except Exception:
+        typer.secho("⚠️ Unable to determine HEAD hash.", fg=typer.colors.YELLOW)
+
+    # Fallback to empty string if we couldn't get a head hash
+    if not head_hash:
+        typer.secho("⚠️ HEAD hash empty; aborting.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    range_str = f"{start}^..{head_hash}"
+
+    # Try copying to clipboard on macOS
+    if _is_macos_with_pbcopy():
+        ok = _copy_to_clipboard(range_str, success_msg=f"📋 Copied range: {range_str}")
+        if not ok:
+            # If copy failed, fall back to printing
+            typer.echo(range_str)
+    else:
+        # Not macOS or pbcopy missing; just print the range so caller can pipe it
+        typer.secho("⚠️ Clipboard not available; printing the range instead:", fg=typer.colors.YELLOW)
+        typer.echo(range_str)
+
 # branch_b typically main/master
 def get_true_merge_base(branch_a, branch_b):
     """Find a 'true' merge-base between two branches.
