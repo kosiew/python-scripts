@@ -387,6 +387,10 @@ gcopyhash() {
 gcopystarthash() {
   run_alias_py gcopystarthash "$@"
 }
+
+clip-to-commit() {
+  run_alias_py clip-to-commit "$@"
+}
  
 gcopybranch() {
   run_alias_py gcopybranch "$@"

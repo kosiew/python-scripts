@@ -690,7 +690,7 @@ def _render_and_write(issue_id: str, url: str, prefix: str, tpl_text: str, summa
 @app.command("clip-to-commit", help="Convert clipboard content to a git commit message using local llm and copy to clipboard")
 def clip_to_commit(
     copy: bool = typer.Option(True, "--copy/--no-copy", help="Copy the generated message to clipboard (default: True)"),
-    subject_only: bool = typer.Option(True, "--subject-only/--full", help="Generate subject only (default) or subject + body"),
+    subject_only: bool = typer.Option(False, "--subject-only/--full", help="Generate subject only (default) or subject + body"),
 ) -> None:
     """Generate a git commit message from the macOS clipboard using the local `llm` CLI.
 
