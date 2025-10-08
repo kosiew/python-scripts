@@ -391,7 +391,11 @@ gcopystarthash() {
 clip-to-commit() {
   run_alias_py clip-to-commit "$@"
 }
- 
+
+copy-range() {
+  run_alias_py copy-range "$@"
+} 
+
 gcopybranch() {
   run_alias_py gcopybranch "$@"
 }
