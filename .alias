@@ -388,10 +388,12 @@ gcopystarthash() {
   run_alias_py gcopystarthash "$@"
 }
 
+# convert clipboard comments into commit message and copy to clipboard
 clip-to-commit() {
   run_alias_py clip-to-commit "$@"
 }
 
+# copy {START}^..{HEAD} range
 copy-range() {
   run_alias_py copy-range "$@"
 } 
