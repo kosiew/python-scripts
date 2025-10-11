@@ -354,6 +354,14 @@ def _find_unit_test_cmd(file_path: Path, crate_root: Path, pkg_flag: str) -> str
     debug_print(f"==> Module path parts: {parts2}")
     module_path = '::'.join(parts2)
     debug_print(f"==> Module path: {module_path}")
+    
+    # Check if this is a tests.rs submodule file - if so, run parent module tests
+    if file_path.stem == 'tests':
+        # Remove 'tests' from the module path and run tests for parent module
+        parts2 = [p for p in parts2 if p != 'tests']
+        module_path = '::'.join(parts2)
+        debug_print(f"==> Detected tests.rs submodule, using parent module path: {module_path}")
+    
     cmd = f"cargo test {pkg_flag} {module_path}" if module_path else f"cargo test {pkg_flag}"
     debug_print(f"==> Test command for unit test/example: {cmd}")
     return cmd
@@ -439,7 +447,13 @@ def _craft_single_test_command(file_path: Path) -> str:
     parts = rel_to_ws.with_suffix('').parts
     debug_print(f"==> Path parts: {parts}")
     
-    if 'tests' in parts:
+    # Check if 'tests' is a directory in the path (not just part of filename)
+    # We need to check the path WITH the extension to distinguish tests/ dir from tests.rs file
+    parts_with_ext = rel_to_ws.parts
+    is_integration_test = 'tests' in parts_with_ext and 'src' not in parts_with_ext
+    debug_print(f"==> Is integration test: {is_integration_test}")
+    
+    if is_integration_test:
         return _find_integration_test_cmd(file_path, parts, crate_root, pkg_flag)
     else:
         return _find_unit_test_cmd(file_path, crate_root, pkg_flag)
